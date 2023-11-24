@@ -1,14 +1,11 @@
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.InvalidKeyException;
-import java.security.Key;
-import java.security.NoSuchAlgorithmException;
+import java.security.*;
 import java.util.Base64;
 
 public class LicenceManager {
 
-    public void generateLicence() {
+    public void generateLicence() throws NoSuchAlgorithmException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException {
         //user data (temp)
         String userName = "Joao";
         String userEmail = "joao@gmail.com";
@@ -23,8 +20,17 @@ public class LicenceManager {
         String expiryDate = "30/11/2023";
 
         //encryption
-        //encrypt()
+        SecretKey key = generateKey();
+        byte[] iv = generateIV();
+        encrypt(appName, key, iv);
 
+    }
+
+    private byte[] generateIV() throws NoSuchAlgorithmException {
+        SecureRandom random = SecureRandom.getInstanceStrong();
+        byte[] iv = new byte[16];
+        random.nextBytes(iv);
+        return iv;
     }
 
     private SecretKey generateKey() throws NoSuchAlgorithmException {
