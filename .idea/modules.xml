@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/AplicacaoSegurissima/AplicacaoSegurissima.iml" filepath="$PROJECT_DIR$/AplicacaoSegurissima/AplicacaoSegurissima.iml" />
+      <module fileurl="file://$PROJECT_DIR$/AppProtegida/AppProtegida.iml" filepath="$PROJECT_DIR$/AppProtegida/AppProtegida.iml" />
       <module fileurl="file://$PROJECT_DIR$/ControloExecucao/ControloExecucao.iml" filepath="$PROJECT_DIR$/ControloExecucao/ControloExecucao.iml" />
       <module fileurl="file://$PROJECT_DIR$/GestorLicencas/GestorLicencas.iml" filepath="$PROJECT_DIR$/GestorLicencas/GestorLicencas.iml" />
       <module fileurl="file://$PROJECT_DIR$/ProjetoSI.iml" filepath="$PROJECT_DIR$/ProjetoSI.iml" />
