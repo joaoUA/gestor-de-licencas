@@ -1,10 +1,10 @@
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.*;
-import java.util.Base64;
 
 public class LicenceManager {
 
@@ -31,7 +31,8 @@ public class LicenceManager {
 
         //save to file
         String fileName = "licenceTest";
-        saveToFile(encrypt(appName, key, iv), fileName);
+        Path filePath = Paths.get( System.getProperty("user.home"), "Desktop", fileName);
+        saveToFile(encrypt(appName, key, iv), filePath);
     }
 
     private byte[] generateIV() throws NoSuchAlgorithmException {
@@ -53,8 +54,8 @@ public class LicenceManager {
         return cipher.doFinal(input.getBytes());
     }
 
-    private void saveToFile(byte[] data, String fileName) throws IOException {
-        FileOutputStream fos = new FileOutputStream(fileName);
+    private void saveToFile(byte[] data, Path path) throws IOException {
+        FileOutputStream fos = new FileOutputStream(path.toFile());
         fos.write(data);
         fos.close();
     }
