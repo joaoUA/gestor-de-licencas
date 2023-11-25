@@ -1,6 +1,6 @@
 public class ControloExecucao {
 
-    void init(String nomeApp, String versao) {
+    public ControloExecucao(String appName, String version) {
 
     }
 
