@@ -1,11 +1,16 @@
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.security.*;
 import java.util.Base64;
 
 public class LicenceManager {
 
-    public void generateLicence() throws NoSuchAlgorithmException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException {
+    public void generateLicence() throws NoSuchAlgorithmException, InvalidAlgorithmParameterException,
+            NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException,
+            IOException {
         //user data (temp)
         String userName = "Joao";
         String userEmail = "joao@gmail.com";
@@ -24,6 +29,9 @@ public class LicenceManager {
         byte[] iv = generateIV();
         encrypt(appName, key, iv);
 
+        //save to file
+        String fileName = "licenceTest";
+        saveToFile(encrypt(appName, key, iv), fileName);
     }
 
     private byte[] generateIV() throws NoSuchAlgorithmException {
@@ -39,10 +47,15 @@ public class LicenceManager {
         return keyGenerator.generateKey();
     }
 
-    private String encrypt(String input, Key key, byte[] iv) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
+    private byte[] encrypt(String input, Key key, byte[] iv) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
         Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
         cipher.init(Cipher.ENCRYPT_MODE, key, new IvParameterSpec(iv));
-        byte[] encryptedBytes = cipher.doFinal(input.getBytes());
-        return Base64.getEncoder().encodeToString(encryptedBytes);
+        return cipher.doFinal(input.getBytes());
+    }
+
+    private void saveToFile(byte[] data, String fileName) throws IOException {
+        FileOutputStream fos = new FileOutputStream(fileName);
+        fos.write(data);
+        fos.close();
     }
 }
