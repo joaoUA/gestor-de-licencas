@@ -17,7 +17,8 @@ public class GestorLicencasCLI {
         while(!exit) {
             System.out.println("Menu:");
             System.out.println("1 - Criar Licença");
-            System.out.println("2 - Listar Licenças");
+            System.out.println("2 - Criar novo par de chaves");
+            System.out.println("3 - Listar Licenças");
             System.out.println("0 - Sair");
 
             int op = scanner.nextInt();
@@ -31,6 +32,9 @@ public class GestorLicencasCLI {
                     lm.generateLicence();
                     break;
                 case 2:
+                    // Criar novo par de chaves
+                    lm.generateKeyPair();
+                case 3:
                     //Listar licenças
                     break;
             }

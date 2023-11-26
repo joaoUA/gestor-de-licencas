@@ -2,11 +2,18 @@ import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.*;
 
 public class LicenceManager {
+
+    private KeyPair keyPair;
+
+    public LicenceManager() {
+
+    }
 
     public void generateLicence() throws NoSuchAlgorithmException, InvalidAlgorithmParameterException,
             NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException,
@@ -31,8 +38,24 @@ public class LicenceManager {
 
         //save to file
         String fileName = "licenceTest";
-        Path filePath = Paths.get( System.getProperty("user.home"), "Desktop", fileName);
+        //Path filePath = Paths.get( System.getProperty("user.home"), "Desktop", fileName);
+        Path filePath = Paths.get( System.getProperty("user.dir"), "licences", fileName);
         saveToFile(encrypt(appName, key, iv), filePath);
+    }
+
+    public void generateKeyPair() throws NoSuchAlgorithmException, IOException {
+        int keySize = 2048;
+        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+        keyPairGenerator.initialize(keySize);
+
+        keyPair = keyPairGenerator.generateKeyPair();
+
+        Path keyPath = Paths.get(System.getProperty("user.dir"), "public_keys", "pk_261124_1654");
+        saveToFile(getPublicKey(), keyPath);
+    }
+
+    public byte[] getPublicKey() {
+        return keyPair.getPublic().getEncoded();
     }
 
     private byte[] generateIV() throws NoSuchAlgorithmException {
@@ -55,6 +78,7 @@ public class LicenceManager {
     }
 
     private void saveToFile(byte[] data, Path path) throws IOException {
+        Files.createDirectories(path.getParent());
         FileOutputStream fos = new FileOutputStream(path.toFile());
         fos.write(data);
         fos.close();
