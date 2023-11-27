@@ -5,15 +5,61 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.*;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.X509EncodedKeySpec;
 import java.util.Arrays;
 import java.util.Scanner;
 
 public class ExecutionController {
-    private String appName;
-    private String version;
-    public ExecutionController(String appName, String version) {
+    private final String appName;
+    private final String version;
+    private KeyPair keyPair;
+    public ExecutionController(String appName, String version) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException {
         this.appName = appName;
         this.version = version;
+
+        //check if there's a key par for the app
+        Path keyDir = Paths.get(System.getProperty("user.dir"), "assym_keys");
+        if (!Files.isDirectory(keyDir)) {
+            Files.createDirectory(keyDir);
+        }
+        Path publicKeyPath = Paths.get(System.getProperty("user.dir"), "assym_keys", "public_k");
+        Path privateKeyPath = Paths.get(System.getProperty("user.dir"), "assym_keys", "private_k");
+
+        if (!Files.exists(publicKeyPath) || !Files.exists(privateKeyPath)) {
+            System.out.println("Erro ao econtrar ChavePublica E ChavePrivada");
+            //Create a new pair and save it
+            int keySize = 2048;
+            KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+            keyPairGenerator.initialize(keySize);
+            keyPair = keyPairGenerator.generateKeyPair();
+
+            System.out.println("Novo par de chaves criado!");
+
+            //save to file
+            BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(publicKeyPath.toFile()));
+            bos.write(keyPair.getPublic().getEncoded());
+            bos.close();
+
+            bos = new BufferedOutputStream(new FileOutputStream(privateKeyPath.toFile()));
+            bos.write(keyPair.getPrivate().getEncoded());
+            bos.close();
+
+            System.out.printf("Par de chaves guarda com sucesso em:\n%s\n%s%n", publicKeyPath, privateKeyPath);
+
+        } else {
+            System.out.println("Encontrado com sucesso par de chaves.");
+            byte[] publicKeyBytes = Files.readAllBytes(publicKeyPath);
+            byte[] privateKeyBytes = Files.readAllBytes(privateKeyPath);
+
+            //load pair of keys
+            KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+            keyFactory.generatePublic(new X509EncodedKeySpec(publicKeyBytes));
+            keyFactory.generatePrivate(new PKCS8EncodedKeySpec(privateKeyBytes));
+            System.out.println("Par de chaves, carregadas do ficheiro com sucesso.");
+        }
+
     }
 
     public boolean isRegistered() {
@@ -52,7 +98,7 @@ public class ExecutionController {
         encryptedData[7] = encrypt(version, key, iv);
 
         Path filePath = Paths.get( System.getProperty("user.home"), "licence_request", "licence_request_data");
-        System.out.println(filePath.toString());
+        System.out.println(filePath);
         Files.createDirectories(filePath.getParent());
 
         BufferedOutputStream os = new BufferedOutputStream(new FileOutputStream(filePath.toFile()));
