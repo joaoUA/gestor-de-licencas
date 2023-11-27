@@ -1,3 +1,6 @@
+import javax.crypto.*;
+import javax.crypto.spec.IvParameterSpec;
+import java.security.*;
 import java.util.Scanner;
 
 public class ControloExecucao {
@@ -7,10 +10,15 @@ public class ControloExecucao {
     }
 
     boolean isRegistered() {
+        /*
+        todo:  verificar se existe algum ficheiro de licença
+            se sim, verificar validade
+            desencriptar dados, etc
+        */
         return false;
     }
 
-    boolean startRegistration() {
+    boolean startRegistration() throws NoSuchAlgorithmException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException {
         //User Data - name, email, nic, cc certificate
         String userName;
         String userEmail;
@@ -69,11 +77,44 @@ public class ControloExecucao {
 
         sc.close();
 
+        /*
+        todo encriptar dados com cifra simétrica (AES, CBC, etc)
+            encriptar chave e iv resultante dessa opeação com cifra assimétrica (chave publica do autor)
+            colocar tudo numa pasta para ser enviado para o autor
+        */
+
+        //encrypt
+        byte[] iv = generateIV();
+        SecretKey key = generateKey();
+        encrypt(appName, key, iv);
+
+        //encrypt key and iv
+
         return true;
     }
 
     void showLicenseInfo() {
 
     }
+
+    private byte[] generateIV() throws NoSuchAlgorithmException {
+        SecureRandom random = SecureRandom.getInstanceStrong();
+        byte[] iv = new byte[16];
+        random.nextBytes(iv);
+        return iv;
+    }
+
+    private SecretKey generateKey() throws NoSuchAlgorithmException {
+        KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
+        keyGenerator.init(256);
+        return keyGenerator.generateKey();
+    }
+
+    private byte[] encrypt(String input, Key key, byte[] iv) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
+        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+        cipher.init(Cipher.ENCRYPT_MODE, key, new IvParameterSpec(iv));
+        return cipher.doFinal(input.getBytes());
+    }
+
 
 }
