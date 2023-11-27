@@ -1,6 +1,11 @@
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
+import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.*;
+import java.util.Arrays;
 import java.util.Scanner;
 
 public class ExecutionController {
@@ -14,62 +19,18 @@ public class ExecutionController {
     public boolean isRegistered() {
         return false;
     }
-    public boolean startRegistration() throws NoSuchAlgorithmException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException {
+    public boolean startRegistration() throws NoSuchAlgorithmException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException, IOException {
         //user data - name, email, nic, cc certificate
-        String username;
-        String email;
-        String nic;
+        String username = "joao";
+        String email = "joao@gmail.com";
+        String nic = "999888777";
         //system data - cpu nr, cpu type, mac addr
-        int cpus;
-        String cpuType;
-        String macAddresses;
+        int cpus = 2;
+        String cpuType = "Intel";
+        String macAddresses = "555";
         //app data - name, version, hash
-        String appName;
-        String version;
-
-        Scanner scanner = new Scanner(System.in);
-
-        System.out.println("Processo de criação de pedido de licença");
-        do {
-            System.out.println("Enter your name:");
-            username = scanner.nextLine();
-        } while (username.isEmpty());
-
-        do {
-            System.out.println("Enter your email:");
-            email = scanner.nextLine();
-        } while (email.isEmpty());
-
-        do {
-            System.out.println("Enter your nic");
-            nic = scanner.nextLine();
-        } while (nic.isEmpty());
-
-        do {
-            System.out.println("Enter the number of CPUs:");
-            cpus = scanner.nextInt();
-            scanner.nextLine();
-        } while (cpus < 1);
-
-        do {
-            System.out.println("Enter the type of CPUs:");
-            cpuType = scanner.nextLine();
-        } while (cpuType.isEmpty());
-
-        do {
-            System.out.println("Enter the MAC Addresses:");
-            macAddresses = scanner.nextLine();
-        } while (macAddresses.isEmpty());
-
-        do {
-            System.out.println("Enter the app's name:");
-            appName = scanner.nextLine();
-        } while (appName.isEmpty());
-
-        do {
-            System.out.println("Enter the app's current version:");
-            version = scanner.nextLine();
-        } while (version.isEmpty());
+        String appName = "protectedApp";
+        String version = "1.0";
 
         /*
         todo encriptar dados com cifra simétrica (AES/CBC)
@@ -79,7 +40,28 @@ public class ExecutionController {
 
         byte[] iv = generateIV();
         SecretKey key = generateKey();
-        encrypt(appName, key, iv);
+
+        byte[][] encryptedData = new byte[8][];
+        encryptedData[0] = encrypt(username, key, iv);
+        encryptedData[1] = encrypt(email, key, iv);
+        encryptedData[2] = encrypt(nic, key, iv);
+        encryptedData[3] = encrypt(String.valueOf(cpus), key, iv);
+        encryptedData[4] = encrypt(cpuType, key, iv);
+        encryptedData[5] = encrypt(macAddresses, key, iv);
+        encryptedData[6] = encrypt(appName, key, iv);
+        encryptedData[7] = encrypt(version, key, iv);
+
+        Path filePath = Paths.get( System.getProperty("user.home"), "licence_request", "licence_request_data");
+        System.out.println(filePath.toString());
+        Files.createDirectories(filePath.getParent());
+
+        BufferedOutputStream os = new BufferedOutputStream(new FileOutputStream(filePath.toFile()));
+        for (byte[] data : encryptedData) {
+            os.write(data);
+            os.write('\n');
+        }
+        os.close();
+        System.out.println("Dados necessários para pedido de licença, guardados com sucesso!");
 
         return true;
     }
