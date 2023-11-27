@@ -7,35 +7,34 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.util.Scanner;
 
-public class GestorLicencasCLI {
+public class LicenceManagerCLI {
     public static void main(String[] args) throws InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, IOException, InvalidKeyException {
         Scanner scanner = new Scanner(System.in);
         boolean exit = false;
 
         LicenceManager lm = new LicenceManager();
 
-        while(!exit) {
+        while (!exit) {
             System.out.println("Menu:");
-            System.out.println("1 - Criar Licença");
-            System.out.println("2 - Criar novo par de chaves");
-            System.out.println("3 - Listar Licenças");
-            System.out.println("0 - Sair");
+            System.out.println("1. Criar licença");
+            System.out.println("2. Criar par de chaves");
+            System.out.println("3. Listar licenças");
+            System.out.println("0. Sair");
 
             int op = scanner.nextInt();
+            scanner.nextLine();
 
             switch (op) {
-                case 0:
-                    //Sair
+                case 0: //sair
                     exit = true;
-                case 1:
-                    //Criar licença
+                    break;
+                case 1: //criar licença
                     lm.generateLicence();
                     break;
-                case 2:
-                    // Criar novo par de chaves
+                case 2: //criar par de chaves
                     lm.generateKeyPair();
-                case 3:
-                    //Listar licenças
+                    break;
+                case 3: //listar licenças
                     break;
             }
         }

@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="ExecutionController">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/../ExecutionController/out/artifacts/ExecutionController_jar/ExecutionController.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
