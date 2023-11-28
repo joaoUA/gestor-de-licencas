@@ -46,17 +46,18 @@ public class ExecutionController {
             bos.write(keyPair.getPrivate().getEncoded());
             bos.close();
 
-            System.out.printf("Par de chaves guarda com sucesso em:\n%s\n%s%n", publicKeyPath, privateKeyPath);
+            System.out.printf("Par de chaves guarda com sucesso em:\n%s\n%s\n", publicKeyPath, privateKeyPath);
 
         } else {
             System.out.println("Encontrado com sucesso par de chaves.");
             byte[] publicKeyBytes = Files.readAllBytes(publicKeyPath);
             byte[] privateKeyBytes = Files.readAllBytes(privateKeyPath);
 
-            //load pair of keys
+            //load the pair of keys
             KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-            keyFactory.generatePublic(new X509EncodedKeySpec(publicKeyBytes));
-            keyFactory.generatePrivate(new PKCS8EncodedKeySpec(privateKeyBytes));
+            PublicKey publicKey = keyFactory.generatePublic(new X509EncodedKeySpec(publicKeyBytes));
+            PrivateKey privateKey = keyFactory.generatePrivate(new PKCS8EncodedKeySpec(privateKeyBytes));
+            keyPair = new KeyPair(publicKey, privateKey);
             System.out.println("Par de chaves, carregadas do ficheiro com sucesso.");
         }
 
@@ -65,7 +66,7 @@ public class ExecutionController {
     public boolean isRegistered() {
         return false;
     }
-    public boolean startRegistration() throws NoSuchAlgorithmException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException, IOException {
+    public boolean startRegistration() throws NoSuchAlgorithmException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException, IOException, InvalidKeySpecException {
         //user data - name, email, nic, cc certificate
         String username = "joao";
         String email = "joao@gmail.com";
@@ -78,11 +79,18 @@ public class ExecutionController {
         String appName = "protectedApp";
         String version = "1.0";
 
-        /*
-        todo encriptar dados com cifra simétrica (AES/CBC)
-            encriptar chave & iv resultante, com cifra assimétrica (RSA, e chave pública do autor)
-            colocar tudo numa pasta para ser enviado para o autor
-        */
+        //verifica se existe Chave Pública do Autor no lugar esperado
+        Path authorPublicKeyPath = Paths.get(System.getProperty("user.dir"), "author_keys", "author_public_key");
+
+        if (!Files.exists(authorPublicKeyPath)) {
+            System.out.println("Não foi possível encontrar chave pública do autor");
+            return false;
+        }
+
+        byte[] authorPublicKeyBytes = Files.readAllBytes(authorPublicKeyPath);
+        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+        PublicKey authorPublicKey = keyFactory.generatePublic(new X509EncodedKeySpec(authorPublicKeyBytes));
+
 
         byte[] iv = generateIV();
         SecretKey key = generateKey();
@@ -108,6 +116,30 @@ public class ExecutionController {
         }
         os.close();
         System.out.println("Dados necessários para pedido de licença, guardados com sucesso!");
+
+        //Encriptar Chave
+        Cipher rsaCipher = Cipher.getInstance("RSA");
+        rsaCipher.init(Cipher.ENCRYPT_MODE, authorPublicKey);
+
+        byte[] encryptedKey = rsaCipher.doFinal(key.getEncoded());
+        byte[] encryptedIV = rsaCipher.doFinal(iv);
+
+        //Guardar na mesma pasta
+        Path encryptedKeyPath = Paths.get(System.getProperty("user.home"), "licence_request", "licence_key");
+        Path encryptedIVPath = Paths.get(System.getProperty("user.home"), "licence_request", "licence_iv");
+
+        BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(encryptedKeyPath.toFile()));
+        bos.write(encryptedKey);
+        bos.close();
+
+        bos = new BufferedOutputStream(new FileOutputStream(encryptedIVPath.toFile()));
+        bos.write(encryptedIV);
+        bos.close();
+
+        Path appPublicKeyPath = Paths.get(System.getProperty("user.home"), "licence_request", "app_public_key");
+        bos = new BufferedOutputStream(new FileOutputStream(appPublicKeyPath.toFile()));
+        bos.write(keyPair.getPublic().getEncoded());
+        bos.close();
 
         return true;
     }
