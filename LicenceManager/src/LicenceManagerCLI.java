@@ -2,13 +2,17 @@ import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.security.spec.InvalidKeySpecException;
 import java.util.Scanner;
 
 public class LicenceManagerCLI {
-    public static void main(String[] args) throws InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, IOException, InvalidKeyException {
+    public static void main(String[] args) throws InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, IOException, InvalidKeyException, InvalidKeySpecException {
         Scanner scanner = new Scanner(System.in);
         boolean exit = false;
 
@@ -29,6 +33,13 @@ public class LicenceManagerCLI {
                     exit = true;
                     break;
                 case 1: //criar licença
+                    //Verifica se existe ficheiros com chaves
+                    Path filePath = Paths.get(System.getProperty("user.home"), "licence_request");
+                    if (!Files.exists(filePath)) {
+                        System.out.println("Não foi encontrado o ficheiro!");
+                        break;
+                    }
+                    //
                     lm.generateLicence();
                     break;
                 case 2: //criar par de chaves
