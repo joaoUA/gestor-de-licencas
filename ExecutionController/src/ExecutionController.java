@@ -95,25 +95,15 @@ public class ExecutionController {
         byte[] iv = generateIV();
         SecretKey key = generateKey();
 
-        byte[][] encryptedData = new byte[8][];
-        encryptedData[0] = encrypt(username, key, iv);
-        encryptedData[1] = encrypt(email, key, iv);
-        encryptedData[2] = encrypt(nic, key, iv);
-        encryptedData[3] = encrypt(String.valueOf(cpus), key, iv);
-        encryptedData[4] = encrypt(cpuType, key, iv);
-        encryptedData[5] = encrypt(macAddresses, key, iv);
-        encryptedData[6] = encrypt(appName, key, iv);
-        encryptedData[7] = encrypt(version, key, iv);
+        String sb = "%s\n%s\n%s\n%d\n%s\n%s\n%s\n%s".formatted(username, email, nic, cpus, cpuType, macAddresses, appName, version);
+        byte[] encryptedData = encrypt(sb, key, iv);
 
         Path filePath = Paths.get( System.getProperty("user.home"), "licence_request", "licence_request_data");
         System.out.println(filePath);
         Files.createDirectories(filePath.getParent());
 
         BufferedOutputStream os = new BufferedOutputStream(new FileOutputStream(filePath.toFile()));
-        for (byte[] data : encryptedData) {
-            os.write(data);
-            os.write('\n');
-        }
+        os.write(encryptedData);
         os.close();
         System.out.println("Dados necessários para pedido de licença, guardados com sucesso!");
 
