@@ -1,7 +1,8 @@
-import javax.crypto.BadPaddingException;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.NoSuchPaddingException;
+import javax.crypto.*;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -9,6 +10,8 @@ import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.spec.InvalidKeySpecException;
+import java.util.Arrays;
+import java.util.Base64;
 import java.util.Scanner;
 
 public class LicenceManagerCLI {
@@ -33,14 +36,56 @@ public class LicenceManagerCLI {
                     exit = true;
                     break;
                 case 1: //criar licença
-                    //Verifica se existe ficheiros com chaves
-                    Path filePath = Paths.get(System.getProperty("user.home"), "licence_request");
-                    if (!Files.exists(filePath)) {
-                        System.out.println("Não foi encontrado o ficheiro!");
+                    //Verificar se existe ficheiros para as chaves (pública e privada)
+                    Path privateKeyPath = Paths.get(System.getProperty("user.dir"), "keys", "private_key");
+                    Path publicKeyPath = Paths.get(System.getProperty("user.dir"), "keys", "public_key");
+
+                    if (!Files.exists(privateKeyPath) || !Files.exists(publicKeyPath)) {
+                        System.out.println("Não foi possível encontrar o par de chaves do autor");
                         break;
                     }
-                    //
-                    lm.generateLicence();
+
+                    System.out.println("Indique o caminho para o pedido de licença");
+                    Path licenceRequestPath = Paths.get(scanner.nextLine().trim());
+
+                    if (!Files.isDirectory(licenceRequestPath)) {
+                        System.out.println("Não existe diretoria no caminho indicado");
+                        break;
+                    }
+
+                    Path licenceKeyPath = licenceRequestPath.resolve("licence_key");
+                    Path licenceIVPath = licenceRequestPath.resolve("licence_iv");
+                    Path licenceDataPath = licenceRequestPath.resolve("licence_request_data");
+                    Path appPublicKeyPath = licenceRequestPath.resolve("app_public_key");
+
+                    if (!Files.exists(licenceKeyPath) || !Files.exists(licenceIVPath) || !Files.exists(licenceDataPath) || !Files.exists(appPublicKeyPath)) {
+                        System.out.println("Diretoria de pedido de licença não tem todos os ficheiros necessários");
+                    }
+
+                    //Desencriptar Chave e IV do pedido
+                    // todo verificar se a instância LM tem valores da chave
+                    Cipher rsaDecipher = Cipher.getInstance("RSA");
+                    rsaDecipher.init(Cipher.DECRYPT_MODE, lm.getPrivateKey());
+
+                    byte[] licenceKeyBytes = Files.readAllBytes(licenceKeyPath);
+                    byte[] licenceIVBytes = Files.readAllBytes(licenceIVPath);
+
+                    byte[] decryptedLicenceKey = rsaDecipher.doFinal(licenceKeyBytes);
+                    byte[] decryptedLicenceIV = rsaDecipher.doFinal(licenceIVBytes);
+
+                    SecretKeySpec licenceKey = new SecretKeySpec(decryptedLicenceKey, "AES");
+                    IvParameterSpec licenceIV = new IvParameterSpec(decryptedLicenceIV);
+
+                    Cipher aesDecipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+                    aesDecipher.init(Cipher.DECRYPT_MODE, licenceKey, licenceIV);
+
+                    byte[] licenceRequestDataBytes = Files.readAllBytes(licenceDataPath);
+                    byte[] decryptedLicenceRequestData = aesDecipher.doFinal(licenceRequestDataBytes);
+
+                    System.out.println(new String(decryptedLicenceRequestData));
+
+                    //todo criar nova licença
+                    //lm.generateLicence();
                     break;
                 case 2: //criar par de chaves
                     lm.generateKeyPair();

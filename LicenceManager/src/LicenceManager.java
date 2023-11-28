@@ -1,7 +1,6 @@
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
 import java.io.BufferedOutputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -46,41 +45,21 @@ public class LicenceManager {
         byte[] privateKeyBytes = Files.readAllBytes(privateKeyPath);
 
         KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-        keyFactory.generatePublic(new X509EncodedKeySpec(publicKeyBytes));
-        keyFactory.generatePrivate(new PKCS8EncodedKeySpec(privateKeyBytes));
+        PublicKey publicKey = keyFactory.generatePublic(new X509EncodedKeySpec(publicKeyBytes));
+        PrivateKey privateKey = keyFactory.generatePrivate(new PKCS8EncodedKeySpec(privateKeyBytes));
+
+        keyPair = new KeyPair(publicKey, privateKey);
+
+
         System.out.println("Chaves do distribuidor carregadas com sucesso!");
 
-
-
-
-        /*
-        if (!Files.exists(publicKeyPath) || !Files.exists(privateKeyPath)) {
-            //create new key pair
-            System.out.println("Erro ao tentar encontrar par de chaves.");
-            generateKeyPair();
-
-            //save to file
-            Files.createDirectories(publicKeyPath.getParent());
-            Files.createDirectories(privateKeyPath.getParent());
-
-            BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(publicKeyPath.toFile()));
-            bos.write(keyPair.getPublic().getEncoded());
-            bos.close();
-
-            bos = new BufferedOutputStream(new FileOutputStream(privateKeyPath.toFile()));
-            bos.write(keyPair.getPrivate().getEncoded());
-            bos.close();
-
-            System.out.printf("!! Novo par de chaves criado, por parte do distribuidor:\n%s\n%s\n", publicKeyPath, privateKeyPath);
-        } else {*/
-            //depois de criar uma chave pública
-            //ir à lib, copiar ficheiro da chave pública e incluir na lib.
-            //depois na lib: encriptar chave&iv usadas para os dados, e colocar tudo numa pasta
-            //depois aqui: receber o caminho da pasta, e tentar ler os ficheiros
     }
 
     public byte[] getPublicKey() {
         return keyPair.getPublic().getEncoded();
+    }
+    public PrivateKey getPrivateKey() {
+        return keyPair.getPrivate();
     }
 
     public void generateLicence() throws NoSuchAlgorithmException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException, IOException {
