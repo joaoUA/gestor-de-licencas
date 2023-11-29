@@ -6,10 +6,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
+import java.security.*;
 import java.security.spec.InvalidKeySpecException;
+import java.security.spec.X509EncodedKeySpec;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Scanner;
@@ -82,10 +81,14 @@ public class LicenceManagerCLI {
                     byte[] licenceRequestDataBytes = Files.readAllBytes(licenceDataPath);
                     byte[] decryptedLicenceRequestData = aesDecipher.doFinal(licenceRequestDataBytes);
 
-                    System.out.println(new String(decryptedLicenceRequestData));
+                    String licenceInfo = new String(decryptedLicenceRequestData);
+                    System.out.println(licenceInfo);
 
+                    byte[] appPublicKeyBytes = Files.readAllBytes(appPublicKeyPath);
+                    KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+                    PublicKey appPublicKey = keyFactory.generatePublic(new X509EncodedKeySpec(appPublicKeyBytes));
                     //todo criar nova licença
-                    //lm.generateLicence();
+                    lm.generateLicence(licenceInfo, appPublicKey);
                     break;
                 case 2: //criar par de chaves
                     lm.generateKeyPair();

@@ -10,6 +10,8 @@ import java.security.*;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 public class LicenceManager {
     private KeyPair keyPair;
@@ -62,28 +64,28 @@ public class LicenceManager {
         return keyPair.getPrivate();
     }
 
-    public void generateLicence() throws NoSuchAlgorithmException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException, IOException {
-        //user data
-        String username = "Joao";
-        String email = "joao@gmail.com";
-        int civilID = 5;
-        //system data
-        int serial = 10;
-        String appName = "exampleApp";
-        String appVersion = "1.0";
-        //licence duration data
-        String issueDate = "24/11/2023";
-        String expiryDate = "30/11/2023";
-
+    public void generateLicence(String licenceInfo, PublicKey appPublicKey) throws NoSuchAlgorithmException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException, IOException {
         //encryption
         SecretKey key = generateKey();
         byte[] iv = generateIV();
-        byte[] encryptedData = encrypt(appName, key, iv);
+        byte[] encryptedData = encrypt(licenceInfo, key, iv);
 
         //save to file
-        String fileName = "licenceTest";
-        Path filePath = Paths.get(System.getProperty("user.dir"), "licences", fileName);
+        String fileName = "licence_info";
+        Path filePath = Paths.get(System.getProperty("user.dir"), "licences", "user", fileName);
         saveToFile(encryptedData, filePath, false);
+
+        Cipher rsaCipher = Cipher.getInstance("RSA");
+        rsaCipher.init(Cipher.ENCRYPT_MODE, appPublicKey);
+
+        byte[] encryptedKey = rsaCipher.doFinal(key.getEncoded());
+        byte[] encryptedIV = rsaCipher.doFinal(iv);
+
+        Path encryptedKeyFile = Paths.get(System.getProperty("user.dir"), "licences", "user", "licence_key");
+        Path encryptedIVFile = Paths.get(System.getProperty("user.dir"), "licences", "user", "licence_iv");
+
+        saveToFile(encryptedKey, encryptedKeyFile, false);
+        saveToFile(encryptedIV, encryptedIVFile, false);
     }
     public void generateKeyPair() throws NoSuchAlgorithmException, IOException {
         int keySize = 2048;
