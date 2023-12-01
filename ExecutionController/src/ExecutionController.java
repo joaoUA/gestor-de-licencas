@@ -1,6 +1,10 @@
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
-import java.io.*;
+import javax.crypto.spec.SecretKeySpec;
+import java.io.BufferedOutputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -8,7 +12,6 @@ import java.security.*;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
-import java.util.Arrays;
 import java.util.Scanner;
 
 public class ExecutionController {
@@ -63,8 +66,45 @@ public class ExecutionController {
 
     }
 
-    public boolean isRegistered() {
-        return false;
+    public boolean isRegistered() throws NoSuchPaddingException, NoSuchAlgorithmException, IOException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException {
+        Scanner scanner = new Scanner(System.in);
+        System.out.println("indique o caminho da diretoria que contêm a licença:");
+        Path licenceDirectory = Path.of(scanner.nextLine());
+
+        if (!Files.isDirectory(licenceDirectory)) {
+            System.out.println("Não foi possível encontrar a diretoria no caminho indicado!");
+            return false;
+        }
+
+        Path licencePath = Paths.get(String.valueOf(licenceDirectory), "licence_info");
+        Path licenceIVPath = Paths.get(String.valueOf(licenceDirectory), "licence_iv");
+        Path licenceKeyPath = Paths.get(String.valueOf(licenceDirectory), "licence_key");
+
+        if (!Files.exists(licencePath) || !Files.exists(licenceIVPath) || !Files.exists(licenceKeyPath)) {
+            System.out.println("Na diretoria não se encontram todos os ficheiros");
+            return false;
+        }
+
+        byte[] licenceKeyBytes = Files.readAllBytes(licenceKeyPath);
+        byte[] licenceIVBytes = Files.readAllBytes(licenceIVPath);
+
+        Cipher rsaDecipher = Cipher.getInstance("RSA");
+        rsaDecipher.init(Cipher.DECRYPT_MODE, keyPair.getPrivate());
+
+        byte[] decryptedLicenceKeyBytes = rsaDecipher.doFinal(licenceKeyBytes);
+        byte[] decryptedLicenceIVBytes = rsaDecipher.doFinal(licenceIVBytes);
+
+        Cipher aesCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+        SecretKeySpec licenceKeySpec = new SecretKeySpec(decryptedLicenceKeyBytes, "AES");
+        aesCipher.init(Cipher.DECRYPT_MODE, licenceKeySpec, new IvParameterSpec(decryptedLicenceIVBytes));
+
+        byte[] licenceInfo = Files.readAllBytes(licencePath);
+        byte[] decryptedLicenceInfo = aesCipher.doFinal(licenceInfo);
+
+        String stringInfo = new String(decryptedLicenceInfo, StandardCharsets.UTF_8);
+
+        System.out.println(stringInfo);
+        return true;
     }
     public boolean startRegistration() throws NoSuchAlgorithmException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException, IOException, InvalidKeySpecException {
         //user data - name, email, nic, cc certificate
