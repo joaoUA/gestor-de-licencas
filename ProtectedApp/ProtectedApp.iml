@@ -8,5 +8,6 @@
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="library" exported="" name="ExecutionController" level="project" />
+    <orderEntry type="library" name="bouncycastle.bcmail.jdk15on" level="project" />
   </component>
 </module>

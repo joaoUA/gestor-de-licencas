@@ -1,69 +1,88 @@
+import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
+import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.operator.ContentSigner;
+import org.bouncycastle.operator.OperatorCreationException;
+import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
+
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.BufferedOutputStream;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.*;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateException;
 import java.security.spec.InvalidKeySpecException;
-import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.Scanner;
 
 public class ExecutionController {
+
+    private static final String keyStoreType = "JKS";
+    private static final String keyStoreFileName = "myKeyStore.jks";
+    private final KeyStore keyStore;
+    private static final String keyPairAlias = "rsa-encryption-key-pair";
+    private char[] keyStorePass = "password".toCharArray();
     private final String appName;
     private final String version;
     private KeyPair keyPair;
-    public ExecutionController(String appName, String version) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException {
+    public ExecutionController(String appName, String version) throws IOException, NoSuchAlgorithmException, KeyStoreException, CertificateException, UnrecoverableEntryException, OperatorCreationException {
         this.appName = appName;
         this.version = version;
 
-        //check if there's a key par for the app
-        Path keyDir = Paths.get(System.getProperty("user.dir"), "assym_keys");
-        if (!Files.isDirectory(keyDir)) {
-            Files.createDirectory(keyDir);
-        }
-        Path publicKeyPath = Paths.get(System.getProperty("user.dir"), "assym_keys", "public_k");
-        Path privateKeyPath = Paths.get(System.getProperty("user.dir"), "assym_keys", "private_k");
 
-        if (!Files.exists(publicKeyPath) || !Files.exists(privateKeyPath)) {
-            System.out.println("Erro ao econtrar ChavePublica E ChavePrivada");
-            //Create a new pair and save it
-            int keySize = 2048;
+        Path keyStorePath = Path.of(keyStoreFileName);
+        if (Files.exists(keyStorePath)) {
+            System.out.println("KeyStore file found: " + keyStorePath);
+            keyStore = KeyStore.getInstance(keyStoreType);
+            keyStore.load(new FileInputStream(keyStoreFileName), keyStorePass);
+            System.out.println("KeyStore loaded successfully!");
+        } else {
+            System.out.println("KeyStore file NOT found: " + keyStorePath);
+            keyStore = KeyStore.getInstance(keyStoreType);
+            keyStore.load(null, keyStorePass);
+            FileOutputStream fos = new FileOutputStream(keyStoreFileName);
+            keyStore.store(fos, keyStorePass);
+            fos.close();
+            System.out.println("New KeyStore created");
+        }
+
+        if (keyStore.containsAlias(keyPairAlias)) {
+            System.out.println("KeyPair found with alias: " + keyPairAlias);
+            KeyStore.PrivateKeyEntry privateKeyEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry(keyPairAlias, new KeyStore.PasswordProtection(keyStorePass));
+            PrivateKey privateKey = privateKeyEntry.getPrivateKey();
+            PublicKey publicKey = privateKeyEntry.getCertificate().getPublicKey();
+
+            keyPair = new KeyPair(publicKey, privateKey);
+            System.out.println("KeyPair loaded successfully!");
+        } else {
+            System.out.println("KeyPair not found with alias: " + keyPairAlias);
+
             KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
-            keyPairGenerator.initialize(keySize);
+            keyPairGenerator.initialize(2048);
             keyPair = keyPairGenerator.generateKeyPair();
 
-            System.out.println("Novo par de chaves criado!");
+            String subjectName = "CN=Self-Signed";
+            Certificate certificate = generateCertificate(keyPair, subjectName);
+            keyStore.setKeyEntry(keyPairAlias, keyPair.getPrivate(), keyStorePass, new Certificate[]{certificate});
 
-            //save to file
-            BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(publicKeyPath.toFile()));
-            bos.write(keyPair.getPublic().getEncoded());
-            bos.close();
+            FileOutputStream fos = new FileOutputStream(keyStoreFileName);
+            keyStore.store(fos, keyStorePass);
+            fos.close();
 
-            bos = new BufferedOutputStream(new FileOutputStream(privateKeyPath.toFile()));
-            bos.write(keyPair.getPrivate().getEncoded());
-            bos.close();
-
-            System.out.printf("Par de chaves guarda com sucesso em:\n%s\n%s\n", publicKeyPath, privateKeyPath);
-
-        } else {
-            System.out.println("Encontrado com sucesso par de chaves.");
-            byte[] publicKeyBytes = Files.readAllBytes(publicKeyPath);
-            byte[] privateKeyBytes = Files.readAllBytes(privateKeyPath);
-
-            //load the pair of keys
-            KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-            PublicKey publicKey = keyFactory.generatePublic(new X509EncodedKeySpec(publicKeyBytes));
-            PrivateKey privateKey = keyFactory.generatePrivate(new PKCS8EncodedKeySpec(privateKeyBytes));
-            keyPair = new KeyPair(publicKey, privateKey);
-            System.out.println("Par de chaves, carregadas do ficheiro com sucesso.");
+            System.out.println("New KeyPair created, no previous KeyPair found for alias: " + keyPairAlias);
         }
-
     }
 
     public boolean isRegistered() throws NoSuchPaddingException, NoSuchAlgorithmException, IOException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException {
@@ -193,5 +212,36 @@ public class ExecutionController {
         Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
         cipher.init(Cipher.ENCRYPT_MODE, key, new IvParameterSpec(iv));
         return cipher.doFinal(input.getBytes());
+    }
+
+    private Certificate generateCertificate(KeyPair keyPair, String subjectName) throws CertificateException, OperatorCreationException {
+        Provider bcProvider = new BouncyCastleProvider();
+        Security.addProvider(bcProvider);
+
+        long now = System.currentTimeMillis();
+        Date startDate = new Date(now);
+
+        X500Name dnName = new X500Name(subjectName);
+        BigInteger certSerialNumber = new BigInteger(Long.toString(now));
+
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(startDate);
+        calendar.add(Calendar.YEAR, 1);
+
+        Date endDate = calendar.getTime();
+
+        String signatureAlgorithm = "SHA256WithRSA";
+
+        ContentSigner contentSigner = new JcaContentSignerBuilder(signatureAlgorithm).build(keyPair.getPrivate());
+
+        JcaX509v3CertificateBuilder certificateBuilder = new JcaX509v3CertificateBuilder(
+                dnName,
+                certSerialNumber,
+                startDate,
+                endDate,
+                dnName,
+                keyPair.getPublic());
+
+        return new JcaX509CertificateConverter().setProvider(bcProvider).getCertificate(certificateBuilder.build(contentSigner));
     }
 }
