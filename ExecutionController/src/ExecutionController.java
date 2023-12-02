@@ -31,8 +31,8 @@ public class ExecutionController {
 
     private static final String keyStoreType = "JKS";
     private static final String keyStoreFileName = "myKeyStore.jks";
-    private final KeyStore keyStore;
-    private static final String keyPairAlias = "rsa-encryption-key-pair";
+        private final KeyStore keyStore;
+        private static final String keyPairAlias = "rsa-encryption-key-pair";
     private char[] keyStorePass = "password".toCharArray();
     private final String appName;
     private final String version;

@@ -1,60 +1,91 @@
+import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
+import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.operator.ContentSigner;
+import org.bouncycastle.operator.OperatorCreationException;
+import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
+
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
-import java.io.BufferedOutputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
+import java.math.BigInteger;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.*;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateException;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Calendar;
+import java.util.Date;
 
 public class LicenceManager {
+    private static final String keyStoreType = "JKS";
+    private static final String keyStoreFileName = "myKeyStore.jks";
+    private final KeyStore keyStore;
+    private static final String keyPairAlias = "rsa-encryption-key-pair";
+    private char[] keyStorePass = "password".toCharArray();
+
     private KeyPair keyPair;
-    private String keysFolderName = "keys";
-    private String publicKeyFileName = "public_key";
-    private String privateKeyFileName = "private_key";
-    private Path publicKeyPath;
-    private Path privateKeyPath;
 
-    public LicenceManager() throws NoSuchAlgorithmException, IOException, InvalidKeySpecException {
-        publicKeyPath = Paths.get(System.getProperty("user.dir"), keysFolderName, publicKeyFileName);
-        privateKeyPath = Paths.get(System.getProperty("user.dir"), keysFolderName, privateKeyFileName);
-
-        //Se existir ficheiros das chaves, carregar info
-        boolean privateKeyFileFound = Files.exists(privateKeyPath);
-        boolean publicKeyFileFound = Files.exists(publicKeyPath);
-
-        if (!privateKeyFileFound) {
-            System.out.println("Chave privada do distribuidor não encontrada!");
-            System.out.printf("Esperado encontrar chave em: %s\n", privateKeyPath);
-        }
-        if (!publicKeyFileFound) {
-            System.out.println("Chave públic do distribuidor não encontrada!");
-            System.out.printf("Esperado encontrar chave em: %s\n", publicKeyPath);
-        }
-        if (!privateKeyFileFound || !publicKeyFileFound) {
-            System.out.println("Crie um novo par de chaves, ou forneça os ficheiros que faltam para o caminho indicado");
-            return;
+    public LicenceManager() throws NoSuchAlgorithmException, IOException, InvalidKeySpecException, KeyStoreException, CertificateException, UnrecoverableEntryException, OperatorCreationException {
+        Path keyStorePath = Path.of(keyStoreFileName);
+        if (Files.exists(keyStorePath)) {
+            System.out.println("KeyStore file found: " + keyStorePath);
+            keyStore = KeyStore.getInstance(keyStoreType);
+            keyStore.load(new FileInputStream(keyStoreFileName), keyStorePass);
+            System.out.println("KeyStore loaded successfully!");
+        } else {
+            System.out.println("KeyStore file NOT found: " + keyStorePath);
+            keyStore = KeyStore.getInstance(keyStoreType);
+            keyStore.load(null, keyStorePass);
+            FileOutputStream fos = new FileOutputStream(keyStoreFileName);
+            keyStore.store(fos, keyStorePass);
+            fos.close();
+            System.out.println("New KeyStore created.");
         }
 
-        System.out.println("Chaves do distribuidor encontradas com sucesso!");
-        byte[] publicKeyBytes = Files.readAllBytes(publicKeyPath);
-        byte[] privateKeyBytes = Files.readAllBytes(privateKeyPath);
+        if (keyStore.containsAlias(keyPairAlias)) {
+            System.out.println("KeyPair found with alias: " + keyPairAlias);
+            KeyStore.PrivateKeyEntry privateKeyEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry(keyPairAlias, new KeyStore.PasswordProtection(keyStorePass));
+            PrivateKey privateKey = privateKeyEntry.getPrivateKey();
+            PublicKey publicKey = privateKeyEntry.getCertificate().getPublicKey();
 
-        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-        PublicKey publicKey = keyFactory.generatePublic(new X509EncodedKeySpec(publicKeyBytes));
-        PrivateKey privateKey = keyFactory.generatePrivate(new PKCS8EncodedKeySpec(privateKeyBytes));
+            keyPair = new KeyPair(publicKey, privateKey);
+            System.out.println("KeyPair loaded successfully!");
+        } else {
+            System.out.println("KeyPair not found with alias: " + keyPairAlias);
 
-        keyPair = new KeyPair(publicKey, privateKey);
+            KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+            keyPairGenerator.initialize(2048);
+            keyPair = keyPairGenerator.generateKeyPair();
 
+            String subjectName = "CN=Self-Signed";
+            Certificate certificate = generateCertificate(keyPair, subjectName);
+            keyStore.setKeyEntry(keyPairAlias, keyPair.getPrivate(), keyStorePass, new Certificate[]{certificate});
 
-        System.out.println("Chaves do distribuidor carregadas com sucesso!");
+            FileOutputStream fos = new FileOutputStream(keyStoreFileName);
+            keyStore.store(fos, keyStorePass);
+            fos.close();
 
+            savePublicKeyToFile();
+
+            System.out.println("New KeyPair created, no previous KeyPair found for alias: " + keyPairAlias);
+        }
+    }
+
+    private void savePublicKeyToFile() throws IOException {
+        Path myPublicKey = Paths.get(System.getProperty("user.home"), "myPublicKey", "pk");
+
+        FileOutputStream fos = new FileOutputStream(myPublicKey.toFile());
+        fos.write(keyPair.getPublic().getEncoded());
+        fos.close();
     }
 
     public byte[] getPublicKey() {
@@ -87,23 +118,18 @@ public class LicenceManager {
         saveToFile(encryptedKey, encryptedKeyFile, false);
         saveToFile(encryptedIV, encryptedIVFile, false);
     }
-    public void generateKeyPair() throws NoSuchAlgorithmException, IOException {
-        int keySize = 2048;
+    public void generateKeyPair() throws NoSuchAlgorithmException, IOException, CertificateException, OperatorCreationException, KeyStoreException {
         KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
-        keyPairGenerator.initialize(keySize);
+        keyPairGenerator.initialize(2048);
         keyPair = keyPairGenerator.generateKeyPair();
 
-        //save to file
-        Files.createDirectories(publicKeyPath.getParent());
-        Files.createDirectories(privateKeyPath.getParent());
+        String subjectName = "CN=Self-Signed";
+        Certificate certificate = generateCertificate(keyPair, subjectName);
+        keyStore.setKeyEntry(keyPairAlias, keyPair.getPrivate(), keyStorePass, new Certificate[]{certificate});
 
-        BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(publicKeyPath.toFile()));
-        bos.write(keyPair.getPublic().getEncoded());
-        bos.close();
-
-        bos = new BufferedOutputStream(new FileOutputStream(privateKeyPath.toFile()));
-        bos.write(keyPair.getPrivate().getEncoded());
-        bos.close();
+        FileOutputStream fos = new FileOutputStream(keyStoreFileName);
+        keyStore.store(fos, keyStorePass);
+        fos.close();
 
     }
     private byte[] generateIV() throws NoSuchAlgorithmException {
@@ -128,5 +154,36 @@ public class LicenceManager {
         FileOutputStream fos = new FileOutputStream(path.toFile(), append);
         fos.write(data);
         fos.close();
+    }
+
+    private Certificate generateCertificate(KeyPair keyPair, String subjectName) throws CertificateException, OperatorCreationException {
+        Provider bcProvider = new BouncyCastleProvider();
+        Security.addProvider(bcProvider);
+
+        long now = System.currentTimeMillis();
+        Date startDate = new Date(now);
+
+        X500Name dnName = new X500Name(subjectName);
+        BigInteger certSerialNumber = new BigInteger(Long.toString(now));
+
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(startDate);
+        calendar.add(Calendar.YEAR, 1);
+
+        Date endDate = calendar.getTime();
+
+        String signatureAlgorithm = "SHA256WithRSA";
+
+        ContentSigner contentSigner = new JcaContentSignerBuilder(signatureAlgorithm).build(keyPair.getPrivate());
+
+        JcaX509v3CertificateBuilder certificateBuilder = new JcaX509v3CertificateBuilder(
+                dnName,
+                certSerialNumber,
+                startDate,
+                endDate,
+                dnName,
+                keyPair.getPublic());
+
+        return new JcaX509CertificateConverter().setProvider(bcProvider).getCertificate(certificateBuilder.build(contentSigner));
     }
 }
