@@ -38,7 +38,7 @@ public class ExecutionController {
     private final String appName;
     private final String version;
 
-    public ExecutionController(String appName, String version) throws IOException, NoSuchAlgorithmException, KeyStoreException, CertificateException, UnrecoverableEntryException, OperatorCreationException {
+    public ExecutionController(String appName, String version) {
         this.appName = appName;
         this.version = version;
     }
@@ -153,70 +153,89 @@ public class ExecutionController {
         return true;
     }
     
-    public boolean startRegistration() throws NoSuchAlgorithmException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException, IOException, InvalidKeySpecException {
-        //user data - name, email, nic, cc certificate
-        String username = "joao";
-        String email = "joao@gmail.com";
-        String nic = "999888777";
-        //system data - cpu nr, cpu type, mac addr
-        int cpus = 2;
-        String cpuType = "Intel";
-        String macAddresses = "555";
-        //app data - name, version, hash
-        String appName = "protectedApp";
-        String version = "1.0";
+    public boolean startRegistration() throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException {
+        String userName;
+        String userEmail;
+        String userNIC;
+        int cpus;
+        String cpusType;
+        String macAddresses;
+        String appName;
+        String appVersion;
 
-        //verifica se existe Chave Pública do Autor no lugar esperado
-        Path authorPublicKeyPath = Paths.get(System.getProperty("user.dir"), "author_keys", "author_public_key");
+        System.out.println("Starting registration process!");
+        userName = "joao";
+        userEmail = "joao@gmail.com";
+        userNIC = "999888777";
+        cpus = 2;
+        cpusType = "intel";
+        macAddresses = "127.0.0.1";
+        appName = this.appName;
+        appVersion = this.version;
 
-        if (!Files.exists(authorPublicKeyPath)) {
-            System.out.println("Não foi possível encontrar chave pública do autor");
+        //Check for author's public key
+        Path authorKeyPath = Paths.get(System.getProperty("user.dir"), "author_keys", "author_public_key");
+        if (!Files.exists(authorKeyPath)) {
+            System.out.println("Author's public key not found at expected location");
             return false;
         }
 
-        byte[] authorPublicKeyBytes = Files.readAllBytes(authorPublicKeyPath);
+        byte[] authorKeyBytes = Files.readAllBytes(authorKeyPath);
         KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-        PublicKey authorPublicKey = keyFactory.generatePublic(new X509EncodedKeySpec(authorPublicKeyBytes));
-
+        PublicKey authorKey = keyFactory.generatePublic(new X509EncodedKeySpec(authorKeyBytes));
 
         byte[] iv = generateIV();
         SecretKey key = generateKey();
 
-        String sb = "%s\n%s\n%s\n%d\n%s\n%s\n%s\n%s".formatted(username, email, nic, cpus, cpuType, macAddresses, appName, version);
-        byte[] encryptedData = encrypt(sb, key, iv);
+        String formattedData = "%s\n%s\n%s\n%d\n%s\n%s\n%s\n%s".formatted(
+                userName,
+                userEmail,
+                userNIC,
+                cpus,
+                cpusType,
+                macAddresses,
+                appName,
+                appVersion);
+        byte[] encryptedData = encrypt(formattedData, key, iv);
 
-        Path filePath = Paths.get( System.getProperty("user.home"), "licence_request", "licence_request_data");
-        System.out.println(filePath);
-        Files.createDirectories(filePath.getParent());
+        //todo allow user to input destination path of licence request folder
 
-        BufferedOutputStream os = new BufferedOutputStream(new FileOutputStream(filePath.toFile()));
-        os.write(encryptedData);
-        os.close();
-        System.out.println("Dados necessários para pedido de licença, guardados com sucesso!");
 
-        //Encriptar Chave
+        String licenceRequestFolderName = "licence_request";
+        String licenceRequestFileName = "licence_request_data";
+        Path encryptedFilePath = Paths.get(System.getProperty("user.home"), licenceRequestFolderName, licenceRequestFileName);
+        Files.createDirectories(encryptedFilePath.getParent());
+        BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(encryptedFilePath.toFile()));
+        bos.write(encryptedData);
+        bos.close();
+        System.out.println("Successfully stored encrypted data!");
+
         Cipher rsaCipher = Cipher.getInstance("RSA");
-        rsaCipher.init(Cipher.ENCRYPT_MODE, authorPublicKey);
+        rsaCipher.init(Cipher.ENCRYPT_MODE, authorKey);
 
         byte[] encryptedKey = rsaCipher.doFinal(key.getEncoded());
         byte[] encryptedIV = rsaCipher.doFinal(iv);
 
-        //Guardar na mesma pasta
-        Path encryptedKeyPath = Paths.get(System.getProperty("user.home"), "licence_request", "licence_key");
-        Path encryptedIVPath = Paths.get(System.getProperty("user.home"), "licence_request", "licence_iv");
-
-        BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(encryptedKeyPath.toFile()));
+        String licenceRequestKeyFileName = "licence_request_key";
+        Path encryptedKeyPath = Paths.get(System.getProperty("user.home"), licenceRequestFolderName, licenceRequestKeyFileName);
+        bos = new BufferedOutputStream(new FileOutputStream(encryptedKeyPath.toFile()));
         bos.write(encryptedKey);
         bos.close();
+        System.out.println("Successfully stored encrypted key!");
 
+        String licenceRequestIVFileName = "licence_request_iv";
+        Path encryptedIVPath = Paths.get(System.getProperty("user.home"), licenceRequestFolderName, licenceRequestIVFileName);
         bos = new BufferedOutputStream(new FileOutputStream(encryptedIVPath.toFile()));
         bos.write(encryptedIV);
         bos.close();
+        System.out.println("Successfully stored encrypted iv!");
 
-        Path appPublicKeyPath = Paths.get(System.getProperty("user.home"), "licence_request", "app_public_key");
+        String publicKeyFileName = "licence_request_public_key";
+        Path appPublicKeyPath = Paths.get(System.getProperty("user.home"), licenceRequestFolderName, publicKeyFileName);
         bos = new BufferedOutputStream(new FileOutputStream(appPublicKeyPath.toFile()));
         bos.write(keyPair.getPublic().getEncoded());
         bos.close();
+        System.out.println("Successfully stored this instance's public key!");
 
         return true;
     }
