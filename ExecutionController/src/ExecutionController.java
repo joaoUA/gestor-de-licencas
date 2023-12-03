@@ -28,103 +28,131 @@ import java.util.Date;
 import java.util.Scanner;
 
 public class ExecutionController {
-
-    private static final String keyStoreType = "JKS";
     private static final String keyStoreFileName = "myKeyStore.jks";
-        private final KeyStore keyStore;
-        private static final String keyPairAlias = "rsa-encryption-key-pair";
-    private char[] keyStorePass = "password".toCharArray();
+    private static final String keyStoreType = "JKS";
+    private static final String keyPairAlias = "rsa-encryption-key-pair";
+    private KeyStore keyStore;
+    private String keyStorePassword;
+    private KeyPair keyPair;
+
     private final String appName;
     private final String version;
-    private KeyPair keyPair;
+
     public ExecutionController(String appName, String version) throws IOException, NoSuchAlgorithmException, KeyStoreException, CertificateException, UnrecoverableEntryException, OperatorCreationException {
         this.appName = appName;
         this.version = version;
+    }
 
+    public boolean isRegistered() throws KeyStoreException, CertificateException, IOException,
+            NoSuchAlgorithmException, UnrecoverableEntryException, NoSuchPaddingException, InvalidKeyException,
+            IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException,
+            OperatorCreationException {
+        Scanner scanner = new Scanner(System.in);
 
-        Path keyStorePath = Path.of(keyStoreFileName);
-        if (Files.exists(keyStorePath)) {
-            System.out.println("KeyStore file found: " + keyStorePath);
+        System.out.println("Checking if KeyStore exists");
+        Path keyStorePath = Paths.get(System.getProperty("user.dir"), keyStoreFileName);
+
+        if (!Files.exists(keyStorePath)) {
+            System.out.println("KeyStore file not found: " + keyStorePath);
+            System.out.println("Creating new KeyStore...");
             keyStore = KeyStore.getInstance(keyStoreType);
-            keyStore.load(new FileInputStream(keyStoreFileName), keyStorePass);
-            System.out.println("KeyStore loaded successfully!");
-        } else {
-            System.out.println("KeyStore file NOT found: " + keyStorePath);
-            keyStore = KeyStore.getInstance(keyStoreType);
-            keyStore.load(null, keyStorePass);
-            FileOutputStream fos = new FileOutputStream(keyStoreFileName);
-            keyStore.store(fos, keyStorePass);
+
+            do {
+                System.out.println("Define the password for the new KeyStore:");
+                keyStorePassword = scanner.nextLine().trim();
+            } while (keyStorePassword.isEmpty());
+
+            keyStore.load(null, keyStorePassword.toCharArray());
+            FileOutputStream fos = new FileOutputStream(keyStorePath.toFile());
+            keyStore.store(fos, keyStorePassword.toCharArray());
             fos.close();
-            System.out.println("New KeyStore created");
+
+            System.out.println("New KeyStore successfully created!");
+            return false;
         }
 
-        if (keyStore.containsAlias(keyPairAlias)) {
-            System.out.println("KeyPair found with alias: " + keyPairAlias);
-            KeyStore.PrivateKeyEntry privateKeyEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry(keyPairAlias, new KeyStore.PasswordProtection(keyStorePass));
-            PrivateKey privateKey = privateKeyEntry.getPrivateKey();
-            PublicKey publicKey = privateKeyEntry.getCertificate().getPublicKey();
+        System.out.println("KeyStore file found: " + keyStorePath);
+        keyStore = KeyStore.getInstance(keyStoreType);
 
-            keyPair = new KeyPair(publicKey, privateKey);
-            System.out.println("KeyPair loaded successfully!");
-        } else {
-            System.out.println("KeyPair not found with alias: " + keyPairAlias);
+        do {
+            System.out.println("Introduce the KeyStore's password: ");
+            keyStorePassword = scanner.nextLine().trim();
+        } while (keyStorePassword.isEmpty());
+
+        //todo handle in case the password is incorrect, instead of throwing
+        keyStore.load(new FileInputStream(keyStorePath.toFile()), keyStorePassword.toCharArray());
+
+        System.out.println("KeyStore successfully loaded!");
+
+        //todo add custom KeyPairAlias depending on user/system/app
+        if (!keyStore.containsAlias(keyPairAlias)) {
+            System.out.println("Couldn't find KeyPair in KeyStore: " + keyPairAlias);
+            System.out.println("Creating new KeyPair...");
 
             KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
             keyPairGenerator.initialize(2048);
             keyPair = keyPairGenerator.generateKeyPair();
 
-            String subjectName = "CN=Self-Signed";
-            Certificate certificate = generateCertificate(keyPair, subjectName);
-            keyStore.setKeyEntry(keyPairAlias, keyPair.getPrivate(), keyStorePass, new Certificate[]{certificate});
+            Certificate certificate = generateCertificate(keyPair, "CN=Self-Signed");
+            keyStore.setKeyEntry(keyPairAlias,
+                    keyPair.getPrivate(),
+                    keyStorePassword.toCharArray(),
+                    new Certificate[]{certificate});
 
-            FileOutputStream fos = new FileOutputStream(keyStoreFileName);
-            keyStore.store(fos, keyStorePass);
+            FileOutputStream fos = new FileOutputStream(keyStorePath.toFile());
+            keyStore.store(fos, keyStorePassword.toCharArray());
             fos.close();
+            System.out.println("New KeyPair created and stored in the KeyStore, alias: " + keyPairAlias);
 
-            System.out.println("New KeyPair created, no previous KeyPair found for alias: " + keyPairAlias);
-        }
-    }
-
-    public boolean isRegistered() throws NoSuchPaddingException, NoSuchAlgorithmException, IOException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException {
-        Scanner scanner = new Scanner(System.in);
-        System.out.println("indique o caminho da diretoria que contêm a licença:");
-        Path licenceDirectory = Path.of(scanner.nextLine());
-
-        if (!Files.isDirectory(licenceDirectory)) {
-            System.out.println("Não foi possível encontrar a diretoria no caminho indicado!");
             return false;
         }
 
-        Path licencePath = Paths.get(String.valueOf(licenceDirectory), "licence_info");
-        Path licenceIVPath = Paths.get(String.valueOf(licenceDirectory), "licence_iv");
-        Path licenceKeyPath = Paths.get(String.valueOf(licenceDirectory), "licence_key");
+        System.out.println("KeyPair found in KeyStore with alias: " + keyPairAlias);
 
-        if (!Files.exists(licencePath) || !Files.exists(licenceIVPath) || !Files.exists(licenceKeyPath)) {
-            System.out.println("Na diretoria não se encontram todos os ficheiros");
+        KeyStore.PrivateKeyEntry privateKeyEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry(keyPairAlias,
+                new KeyStore.PasswordProtection(keyStorePassword.toCharArray()));
+
+        PrivateKey privateKey = privateKeyEntry.getPrivateKey();
+        PublicKey publicKey = privateKeyEntry.getCertificate().getPublicKey();
+
+        keyPair = new KeyPair(publicKey, privateKey);
+
+        System.out.println("Successfully loaded KeyPair with alias: " + keyPairAlias);
+
+        String licenceFolderPathInput;
+        do {
+            System.out.println("Introduce the path for your licence folder:");
+            licenceFolderPathInput = scanner.nextLine().trim();
+        } while (licenceFolderPathInput.isEmpty());
+
+        Path licenceFolderPath = Path.of(licenceFolderPathInput);
+        Path licencePath = Paths.get(String.valueOf(licenceFolderPath), "licence");
+        Path licenceKeyPath = Paths.get(String.valueOf(licenceFolderPath), "licence_key");
+        Path licenceIVPath = Paths.get(String.valueOf(licenceFolderPath), "licence_iv");
+
+        if (!Files.exists(licencePath) || !Files.exists(licenceKeyPath) || !Files.exists(licenceIVPath)) {
+            System.out.println("There are missing files on the licence folder");
             return false;
         }
 
-        byte[] licenceKeyBytes = Files.readAllBytes(licenceKeyPath);
-        byte[] licenceIVBytes = Files.readAllBytes(licenceIVPath);
+        byte[] encryptedLicenceKey = Files.readAllBytes(licenceKeyPath);
+        byte[] encryptedLicenceIV = Files.readAllBytes(licenceIVPath);
 
         Cipher rsaDecipher = Cipher.getInstance("RSA");
         rsaDecipher.init(Cipher.DECRYPT_MODE, keyPair.getPrivate());
+        byte[] decryptedLicenceKey = rsaDecipher.doFinal(encryptedLicenceKey);
+        byte[] decryptedLicenceIV = rsaDecipher.doFinal(encryptedLicenceIV);
 
-        byte[] decryptedLicenceKeyBytes = rsaDecipher.doFinal(licenceKeyBytes);
-        byte[] decryptedLicenceIVBytes = rsaDecipher.doFinal(licenceIVBytes);
+        Cipher aesDecipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+        SecretKeySpec licenceKeySpec = new SecretKeySpec(decryptedLicenceKey, "AES");
+        aesDecipher.init(Cipher.DECRYPT_MODE, licenceKeySpec, new IvParameterSpec(decryptedLicenceIV));
+        byte[] encryptedLicence = Files.readAllBytes(licencePath);
+        byte[] decryptedLicence = aesDecipher.doFinal(encryptedLicence);
 
-        Cipher aesCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
-        SecretKeySpec licenceKeySpec = new SecretKeySpec(decryptedLicenceKeyBytes, "AES");
-        aesCipher.init(Cipher.DECRYPT_MODE, licenceKeySpec, new IvParameterSpec(decryptedLicenceIVBytes));
-
-        byte[] licenceInfo = Files.readAllBytes(licencePath);
-        byte[] decryptedLicenceInfo = aesCipher.doFinal(licenceInfo);
-
-        String stringInfo = new String(decryptedLicenceInfo, StandardCharsets.UTF_8);
-
-        System.out.println(stringInfo);
+        System.out.printf("Licence info:\n %s", new String(decryptedLicence, StandardCharsets.UTF_8));
         return true;
     }
+    
     public boolean startRegistration() throws NoSuchAlgorithmException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException, IOException, InvalidKeySpecException {
         //user data - name, email, nic, cc certificate
         String username = "joao";
