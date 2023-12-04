@@ -5,6 +5,7 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
+import org.json.simple.JSONObject;
 
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
@@ -27,6 +28,7 @@ import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Scanner;
 
 public class ExecutionController {
@@ -210,17 +212,23 @@ public class ExecutionController {
         byte[] iv = generateIV();
         SecretKey key = generateKey();
 
-        String formattedData = "%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s".formatted(
-                userName,
-                userEmail,
-                userNIC,
-                cpus,
-                cpuArch,
-                cpuId,
-                macAddresses,
-                appName,
-                appVersion);
-        byte[] encryptedData = encrypt(formattedData, key, iv);
+        HashMap<String, String> map = new HashMap<>();
+        map.put("userName", userName);
+        map.put("userEmail", userEmail);
+        map.put("userNIC", userNIC);
+        map.put("cpuNumber", cpus);
+        map.put("cpuArchitecture", cpuArch);
+        map.put("cpuIdentifier", cpuId);
+        map.put("macAddress", macAddresses);
+        map.put("appName", appName);
+        map.put("appVersion", appVersion);
+
+        JSONObject jsonObject = new JSONObject(map);
+
+        System.out.println("This will be the information in the licence request:");
+        System.out.println(jsonObject);
+
+        byte[] encryptedData = encrypt(jsonObject.toJSONString(), key, iv);
 
         //todo allow user to input destination path of licence request folder
 
