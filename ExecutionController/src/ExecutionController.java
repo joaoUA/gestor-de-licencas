@@ -14,6 +14,8 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.math.BigInteger;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -154,24 +156,45 @@ public class ExecutionController {
     }
     
     public boolean startRegistration() throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException {
+        Scanner scanner = new Scanner(System.in);
+
         String userName;
         String userEmail;
         String userNIC;
-        int cpus;
-        String cpusType;
+        String cpus;
+        String cpuArch;
+        String cpuId;
         String macAddresses;
         String appName;
         String appVersion;
 
         System.out.println("Starting registration process!");
-        userName = "joao";
-        userEmail = "joao@gmail.com";
-        userNIC = "999888777";
-        cpus = 2;
-        cpusType = "intel";
-        macAddresses = "127.0.0.1";
+
         appName = this.appName;
         appVersion = this.version;
+        userName = System.getProperty("user.name");
+        do {
+            System.out.println("Input your email:");
+            userEmail = scanner.nextLine().trim();
+        } while (userEmail.isEmpty());
+
+        do {
+            System.out.println("Input your Civil ID Number:");
+            userNIC = scanner.nextLine().trim();
+        } while (userNIC.isEmpty());
+
+        cpus = System.getenv("NUMBER_OF_PROCESSORS");
+        cpuArch = System.getenv("PROCESSOR_ARCHITECTURE");
+        cpuId = System.getenv("PROCESSOR_IDENTIFIER");
+
+        InetAddress ip = InetAddress.getLocalHost();
+        NetworkInterface network = NetworkInterface.getByInetAddress(ip);
+        byte[] mac = network.getHardwareAddress();
+        StringBuilder sb = new StringBuilder();
+        for (byte b : mac) {
+            sb.append(String.format("%02X", b));
+        }
+        macAddresses = sb.toString();
 
         //Check for author's public key
         Path authorKeyPath = Paths.get(System.getProperty("user.dir"), "author_keys", "author_public_key");
@@ -187,19 +210,19 @@ public class ExecutionController {
         byte[] iv = generateIV();
         SecretKey key = generateKey();
 
-        String formattedData = "%s\n%s\n%s\n%d\n%s\n%s\n%s\n%s".formatted(
+        String formattedData = "%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s".formatted(
                 userName,
                 userEmail,
                 userNIC,
                 cpus,
-                cpusType,
+                cpuArch,
+                cpuId,
                 macAddresses,
                 appName,
                 appVersion);
         byte[] encryptedData = encrypt(formattedData, key, iv);
 
         //todo allow user to input destination path of licence request folder
-
 
         String licenceRequestFolderName = "licence_request";
         String licenceRequestFileName = "licence_request_data";
