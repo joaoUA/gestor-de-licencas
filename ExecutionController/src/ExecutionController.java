@@ -15,8 +15,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.math.BigInteger;
-import java.net.InetAddress;
-import java.net.NetworkInterface;
+import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,10 +25,7 @@ import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Scanner;
+import java.util.*;
 
 public class ExecutionController {
     private static final String keyStoreFileName = "myKeyStore.jks";
@@ -42,9 +38,30 @@ public class ExecutionController {
     private final String appName;
     private final String version;
 
-    public ExecutionController(String appName, String version) {
+    public ExecutionController(String appName, String version) throws IOException, KeyStoreException, CertificateException, NoSuchAlgorithmException {
         this.appName = appName;
         this.version = version;
+
+        Provider p = Security.getProvider("SunPKCS11");
+        Path configPath = Paths.get("..", "ExecutionController", "src", "pkcs11cc.cfg");
+
+        Provider newProvider = p.configure(configPath.toAbsolutePath().toString());
+
+        System.out.println(newProvider.getName());
+        System.out.println(newProvider.getInfo());
+
+        Provider[] providers = Security.getProviders();
+        for (int i = 0; i < providers.length; i++) {
+            System.out.println(i + "-Nome: "+providers[i].getName());
+        }
+
+        KeyStore ks = KeyStore.getInstance("PKCS11", newProvider);
+        ks.load(null, null);
+
+        Enumeration<String> als = ks.aliases();
+        while (als.hasMoreElements()){
+            System.out.println( als.nextElement() );
+        }
     }
 
     public boolean isRegistered() throws KeyStoreException, CertificateException, IOException,
