@@ -18,7 +18,6 @@ import java.io.IOException;
 import java.math.BigInteger;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -36,9 +35,13 @@ public class ExecutionController {
     private static final String keyStoreFileName = "myKeyStore.jks";
     private static final String keyStoreType = "JKS";
     private static final String keyPairAlias = "rsa-encryption-key-pair";
+    private static final String licenceKeyFileName = "licence_key";
+    private static final String licenceIVFileName = "licence_iv";
+    private static final String licenceFileName = "licence_info";
     private KeyStore keyStore;
     private String keyStorePassword;
     private KeyPair keyPair;
+    private JSONObject licenceJSON;
 
     //LicenceData
     private String appName;
@@ -81,7 +84,7 @@ public class ExecutionController {
 
         PTEID_EIDCard card = context.getEIDCard();
         PTEID_EId eid = card.getID();
-        this.ccFullName = eid.getGivenName() + eid.getSurname();
+        this.ccFullName = eid.getGivenName() + " " + eid.getSurname();
         this.ccNIC = eid.getCivilianIdNumber();
     }
 
@@ -160,9 +163,9 @@ public class ExecutionController {
         } while (licenceFolderPathInput.isEmpty());
 
         Path licenceFolderPath = Path.of(licenceFolderPathInput);
-        Path licencePath = Paths.get(String.valueOf(licenceFolderPath), "licence_info");
-        Path licenceKeyPath = Paths.get(String.valueOf(licenceFolderPath), "licence_key");
-        Path licenceIVPath = Paths.get(String.valueOf(licenceFolderPath), "licence_iv");
+        Path licencePath = Paths.get(String.valueOf(licenceFolderPath), licenceFileName);
+        Path licenceKeyPath = Paths.get(String.valueOf(licenceFolderPath), licenceKeyFileName);
+        Path licenceIVPath = Paths.get(String.valueOf(licenceFolderPath), licenceIVFileName);
 
         if (!Files.exists(licencePath) || !Files.exists(licenceKeyPath) || !Files.exists(licenceIVPath)) {
             System.out.println("There are missing files on the licence folder");
@@ -183,7 +186,7 @@ public class ExecutionController {
         byte[] encryptedLicence = Files.readAllBytes(licencePath);
         byte[] decryptedLicence = aesDecipher.doFinal(encryptedLicence);
 
-        System.out.printf("Licence info:\n %s", new String(decryptedLicence, StandardCharsets.UTF_8));
+        licenceJSON = new JSONObject(new String(decryptedLicence));
         return true;
     }
 
@@ -249,9 +252,6 @@ public class ExecutionController {
         jsonObject.put("appName", appName);
         jsonObject.put("appVersion", appVersion);
 
-        System.out.println("This will be the information in the licence request:");
-        System.out.println(jsonObject);
-
         byte[] encryptedData = encrypt(jsonObject.toString(), key, iv);
 
         //todo allow user to input destination path of licence request folder
@@ -293,13 +293,26 @@ public class ExecutionController {
         System.out.println("Successfully stored this instance's public key!");
 
         System.out.println("Licence Request can be found here:");
-        System.out.println(Paths.get(System.getProperty("user.home"), licenceRequestFolderName));
+        System.out.println(Path.of(System.getProperty("user.home"), licenceRequestFolderName));
+
+        System.out.println("Licence Request: ");
+        showLicenceRequestInfo(jsonObject);
 
         return true;
     }
 
     public void showLicenceInfo() {
+        System.out.println("Licence:");
+        System.out.printf("Name: %s\nEmail: %s\nNIC: %s\nCPUs: %s\nCPU ID: %s\nCPUArch: %s\nMAC: %s\nApp: %s\nVersion: %s\n",
+                licenceJSON.get("userName"), licenceJSON.get("userEmail"), licenceJSON.get("userNIC"),
+                licenceJSON.get("cpuNumber"), licenceJSON.get("cpuIdentifier"), licenceJSON.get("cpuArchitecture"),
+                licenceJSON.get("macAddress"), licenceJSON.get("appName"), licenceJSON.get("appVersion"));
+    }
 
+    private void showLicenceRequestInfo(JSONObject jsonObject) {
+        for (var key : jsonObject.keySet()) {
+            System.out.println(key + ": " + jsonObject.get(key));
+        }
     }
 
     private void generateKeyPair(Path keyStorePath) throws NoSuchAlgorithmException, CertificateException, OperatorCreationException, KeyStoreException, IOException {

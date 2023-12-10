@@ -24,7 +24,9 @@ public class App {
             }
             return;
         }
+        ec.showLicenceInfo();
 
+        System.out.println("---");
         System.out.println("Aplicação protegida em execução");
     }
 }

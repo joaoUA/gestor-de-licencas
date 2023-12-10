@@ -29,3 +29,5 @@ bin/
 .DS_Store
 
 assym_keys/
+hs_err_pid18416.log
+myKeyStore.jks
