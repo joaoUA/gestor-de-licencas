@@ -4,19 +4,22 @@ import org.json.JSONObject;
 import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
+import java.io.BufferedOutputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.*;
+import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.spec.InvalidKeySpecException;
 import java.util.Scanner;
 
 public class LicenceManagerCLI {
 
-    public static void main(String[] args) throws InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, IOException, InvalidKeyException, InvalidKeySpecException, UnrecoverableEntryException, CertificateException, KeyStoreException, OperatorCreationException {
+    public static void main(String[] args) throws InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, IOException, InvalidKeyException, InvalidKeySpecException, UnrecoverableEntryException, CertificateException, KeyStoreException, OperatorCreationException, SignatureException, NoSuchProviderException {
         Scanner scanner = new Scanner(System.in);
         boolean exit = false;
 
@@ -28,6 +31,7 @@ public class LicenceManagerCLI {
             System.out.println("1. Criar licença");
             System.out.println("2. Criar par de chaves");
             System.out.println("3. Listar licenças");
+            System.out.println("4. Emitir Certificado");
             System.out.println("0. Sair");
 
             int op = scanner.nextInt();
@@ -47,6 +51,11 @@ public class LicenceManagerCLI {
                     }
 
                     LicenceManager.DecryptResult decryptResult = lm.decryptLicenceRequest(licenceRequestPath);
+
+                    if (decryptResult == null) {
+                        System.out.println("Error trying to decrypt licence request.");
+                        break;
+                    }
 
                     JSONObject jsonObject = new JSONObject(decryptResult.licenceInfo());
                     lm.showLicenceReqInfo(jsonObject);
@@ -94,6 +103,14 @@ public class LicenceManagerCLI {
 
 
                     stream.close();
+                    break;
+                case 4: // Emitir Certificado
+                    Certificate certificate = lm.getCertificate();
+                    Path certPath = Paths.get(System.getProperty("user.dir"), "certificate", "lm_certificate");
+                    Files.createDirectories(certPath.getParent());
+                    BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(certPath.toFile()));
+                    bos.write(certificate.getEncoded());
+                    bos.close();
                     break;
             }
         }

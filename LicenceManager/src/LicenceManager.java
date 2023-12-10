@@ -10,6 +10,7 @@ import org.json.JSONObject;
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
+import java.io.ByteArrayInputStream;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -18,18 +19,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.*;
+import java.security.cert.*;
 import java.security.cert.Certificate;
-import java.security.cert.CertificateException;
 import java.security.spec.InvalidKeySpecException;
-import java.security.spec.X509EncodedKeySpec;
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.Scanner;
-import java.util.UUID;
+import java.util.*;
 
 public class LicenceManager {
     private static final String keyStoreType = "JKS";
@@ -43,11 +39,14 @@ public class LicenceManager {
     private static final String licenceDataFileName = "licence_info";
     private static final String licenceKeyFileName = "licence_key";
     private static final String licenceIVFileName = "licence_iv";
+    private static final String licenceSignatureFileName = "licence_signature";
+    private static final String licenceCertificateFileName = "licence_cert";
 
     private static final String licenceRequestKeyFileName = "licence_request_key";
     private static final String licenceRequestIVFileName = "licence_request_iv";
     private static final String licenceRequestDataFileName = "licence_request_data";
-    private static final String licenceRequestPublicKey = "licence_request_public_key";
+    private static final String licenceRequestCertificateFileName = "licence_request_cert";
+    private static final String licenceRequestSignatureFileName = "licence_request_signature";
 
     public record DecryptResult(String licenceInfo, PublicKey publicKey){}
 
@@ -129,16 +128,18 @@ public class LicenceManager {
         return keyPair.getPrivate();
     }
 
-    public DecryptResult decryptLicenceRequest(Path licenceRequestFolder) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, IOException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException, InvalidKeySpecException {
+    public DecryptResult decryptLicenceRequest(Path licenceRequestFolder) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, IOException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException, InvalidKeySpecException, SignatureException, CertificateException, NoSuchProviderException {
         Path licenceRequestKeyPath = licenceRequestFolder.resolve(licenceRequestKeyFileName);
         Path licenceRequestIVPath = licenceRequestFolder.resolve(licenceRequestIVFileName);
         Path licenceRequestDataPath = licenceRequestFolder.resolve(licenceRequestDataFileName);
-        Path licenceRequestPublickKey = licenceRequestFolder.resolve(licenceRequestPublicKey);
+        Path licenceRequestCertPath = licenceRequestFolder.resolve(licenceRequestCertificateFileName);
+        Path licenceRequestSignature = licenceRequestFolder.resolve(licenceRequestSignatureFileName);
 
         if (!Files.exists(licenceRequestKeyPath)
             || !Files.exists(licenceRequestIVPath)
             || !Files.exists(licenceRequestDataPath)
-            || !Files.exists(licenceRequestPublickKey)) {
+            || !Files.exists(licenceRequestCertPath)
+            || !Files.exists(licenceRequestSignature)) {
             System.out.println("Missing files in provided directory!");
             return null;
         }
@@ -161,15 +162,28 @@ public class LicenceManager {
         byte[] licenceReqDataBytes = Files.readAllBytes(licenceRequestDataPath);
         byte[] decryptedLDataBytes = aesDecipher.doFinal(licenceReqDataBytes);
 
+        byte[] certificateBytes = Files.readAllBytes(licenceRequestCertPath);
+        CertificateFactory certificateFactory = CertificateFactory.getInstance("X.509");
+        X509Certificate appCertificate = (X509Certificate) certificateFactory.generateCertificate(new ByteArrayInputStream(certificateBytes));
+
+        PublicKey appPublicKey = appCertificate.getPublicKey();
+        appCertificate.verify(appPublicKey);
+
+        byte[] licenceReqSignatureBytes = Files.readAllBytes(licenceRequestSignature);
+        Signature rsa = Signature.getInstance("SHA256withRSA");
+        rsa.initVerify(appPublicKey);
+        rsa.update(decryptedLDataBytes);
+        boolean verifies = rsa.verify(licenceReqSignatureBytes);
+
+        if (!verifies) {
+            return null;
+        }
+
         String licenceInfo = new String(decryptedLDataBytes);
-
-        byte[] licenceReqPKBytes = Files.readAllBytes(licenceRequestPublickKey);
-        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-        PublicKey appPublicKey = keyFactory.generatePublic(new X509EncodedKeySpec(licenceReqPKBytes));
-
+        System.out.println(licenceInfo);
         return new DecryptResult(licenceInfo, appPublicKey);
     }
-    public void generateLicence(String licenceInfo, PublicKey appPublicKey) throws NoSuchAlgorithmException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException, IOException {
+    public void generateLicence(String licenceInfo, PublicKey appPublicKey) throws NoSuchAlgorithmException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException, IOException, SignatureException, KeyStoreException, CertificateEncodingException {
 
         JSONObject licenceJSON = new JSONObject(licenceInfo);
 
@@ -179,12 +193,16 @@ public class LicenceManager {
         licenceJSON.put("startDate", startDate.toString());
         licenceJSON.put("endDate", endDate.toString());
 
-        licenceInfo = licenceJSON.toString();
+        byte[] licenceData = licenceJSON.toString().getBytes();
+        Signature rsa = Signature.getInstance("SHA256withRSA");
+        rsa.initSign(keyPair.getPrivate());
+        rsa.update(licenceData);
+        byte[] signature = rsa.sign();
 
         //Encrypt Licence Info
         SecretKey key = generateKey();
         byte[] iv = generateIV();
-        byte[] encryptedData = encrypt(licenceInfo, key, iv);
+        byte[] encryptedData = encrypt(licenceData, key, iv);
 
         String uniqueLicenceFolderName = generateLicenceFolderName();
 
@@ -219,6 +237,17 @@ public class LicenceManager {
         saveToFile(lmEncryptedKey, lmLicenceKeyFile);
         Path lmLicenceIVFile = Paths.get(System.getProperty("user.dir"), licencesFolderName, uniqueLicenceFolderName, licenceIVFileName);
         saveToFile(lmEncryptedIV, lmLicenceIVFile);
+
+        //Save Signature
+        Path appSignatureFile = Paths.get(System.getProperty("user.home"), licenceFolderNameDistApp, uniqueLicenceFolderName, licenceSignatureFileName);
+        saveToFile(signature, appSignatureFile);
+        Path lmSignatureFile = Paths.get(System.getProperty("user.dir"), licencesFolderName, uniqueLicenceFolderName, licenceSignatureFileName);
+        saveToFile(signature, lmSignatureFile);
+
+        //Save LicenceManager Certificate
+        Path appCertificateFile = Paths.get(System.getProperty("user.home"), licenceFolderNameDistApp, uniqueLicenceFolderName, licenceCertificateFileName);
+        saveToFile(this.keyStore.getCertificate(keyPairAlias).getEncoded(), appCertificateFile);
+        System.out.println("Ceritifica!");
     }
     public void generateKeyPair() throws NoSuchAlgorithmException, IOException, CertificateException, OperatorCreationException, KeyStoreException {
         KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
@@ -301,6 +330,10 @@ public class LicenceManager {
         return Paths.get(System.getProperty("user.dir"), licencesFolderName);
     }
 
+    public Certificate getCertificate() throws KeyStoreException {
+        return this.keyStore.getCertificate(keyPairAlias);
+    }
+
     private byte[] generateIV() throws NoSuchAlgorithmException {
         SecureRandom random = SecureRandom.getInstanceStrong();
         byte[] iv = new byte[16];
@@ -312,10 +345,10 @@ public class LicenceManager {
         keyGenerator.init(256);
         return keyGenerator.generateKey();
     }
-    private byte[] encrypt(String input, Key key, byte[] iv) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
+    private byte[] encrypt(byte[] input, Key key, byte[] iv) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
         Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
         cipher.init(Cipher.ENCRYPT_MODE, key, new IvParameterSpec(iv));
-        return cipher.doFinal(input.getBytes());
+        return cipher.doFinal(input);
     }
 
     private void saveToFile(byte[] data, Path path) throws IOException {

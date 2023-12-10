@@ -11,10 +11,7 @@ import pt.gov.cartaodecidadao.*;
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
-import java.io.BufferedOutputStream;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.math.BigInteger;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
@@ -24,11 +21,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.*;
+import java.security.cert.*;
 import java.security.cert.Certificate;
-import java.security.cert.CertificateException;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
 import java.time.ZonedDateTime;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.Scanner;
@@ -40,6 +38,8 @@ public class ExecutionController {
     private static final String licenceKeyFileName = "licence_key";
     private static final String licenceIVFileName = "licence_iv";
     private static final String licenceFileName = "licence_info";
+    private static final String licenceSignatureFileName = "licence_signature";
+    private static final String licenceCertificateFileName = "licence_cert";
     private KeyStore keyStore;
     private String keyStorePassword;
     private KeyPair keyPair;
@@ -127,7 +127,7 @@ public class ExecutionController {
     }
     public boolean isRegistered() throws IOException,
             NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException,
-            IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException {
+            IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException, SignatureException, CertificateException, NoSuchProviderException {
         Scanner scanner = new Scanner(System.in);
         String licenceFolderPathInput;
         do {
@@ -139,8 +139,14 @@ public class ExecutionController {
         Path licencePath = Paths.get(String.valueOf(licenceFolderPath), licenceFileName);
         Path licenceKeyPath = Paths.get(String.valueOf(licenceFolderPath), licenceKeyFileName);
         Path licenceIVPath = Paths.get(String.valueOf(licenceFolderPath), licenceIVFileName);
+        Path licenceSignaturePath = Paths.get(String.valueOf(licenceFolderPath), licenceSignatureFileName);
+        Path licenceCertificatePath = Paths.get(String.valueOf(licenceFolderPath), licenceCertificateFileName);
 
-        if (!Files.exists(licencePath) || !Files.exists(licenceKeyPath) || !Files.exists(licenceIVPath)) {
+        if (!Files.exists(licencePath)
+                || !Files.exists(licenceKeyPath)
+                || !Files.exists(licenceIVPath)
+                || !Files.exists(licenceSignaturePath)
+                || !Files.exists(licenceCertificatePath)) {
             System.out.println("There are missing files on the licence folder");
             return false;
         }
@@ -158,6 +164,25 @@ public class ExecutionController {
         aesDecipher.init(Cipher.DECRYPT_MODE, licenceKeySpec, new IvParameterSpec(decryptedLicenceIV));
         byte[] encryptedLicence = Files.readAllBytes(licencePath);
         byte[] decryptedLicence = aesDecipher.doFinal(encryptedLicence);
+
+        byte[] signatureBytes = Files.readAllBytes(licenceSignaturePath);
+        Signature rsa = Signature.getInstance("SHA256withRSA");
+
+        byte[] certificateBytes = Files.readAllBytes(licenceCertificatePath);
+        CertificateFactory certificateFactory = CertificateFactory.getInstance("X.509");
+        X509Certificate lmCertificate = (X509Certificate) certificateFactory.generateCertificate(new ByteArrayInputStream(certificateBytes));
+
+        lmCertificate.verify(lmCertificate.getPublicKey());
+        PublicKey lmPublicKey = lmCertificate.getPublicKey();
+
+        rsa.initVerify(lmPublicKey);
+        rsa.update(decryptedLicence);
+        boolean verified = rsa.verify(signatureBytes);
+
+        if (!verified) {
+            System.out.println("Couldn't verify signature");
+            return false;
+        }
 
         licenceJSON = new JSONObject(new String(decryptedLicence));
 
@@ -195,9 +220,16 @@ public class ExecutionController {
         return true;
     }
 
-    public boolean startRegistration() throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException {
+    public boolean startRegistration() throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException, SignatureException, KeyStoreException, CertificateEncodingException {
         System.out.println("Starting registration process!");
         JSONObject jsonData = getDataForLicenceRequest();
+
+        //signature
+        byte[] licenceReqData = jsonData.toString().getBytes();
+        Signature rsa = Signature.getInstance("SHA256withRSA");
+        rsa.initSign(keyPair.getPrivate());
+        rsa.update(licenceReqData);
+        byte[] signature = rsa.sign();
 
         //Check for author's public key
         Path authorKeyPath = Paths.get(System.getProperty("user.dir"), "author_keys", "author_public_key");
@@ -213,7 +245,7 @@ public class ExecutionController {
         byte[] iv = generateIV();
         SecretKey key = generateKey();
 
-        byte[] encryptedData = encrypt(jsonData.toString(), key, iv);
+        byte[] encryptedData = encrypt(licenceReqData, key, iv);
 
         //todo allow user to input destination path of licence request folder
 
@@ -246,12 +278,19 @@ public class ExecutionController {
         bos.close();
         System.out.println("Successfully stored encrypted iv!");
 
-        String publicKeyFileName = "licence_request_public_key";
-        Path appPublicKeyPath = Paths.get(System.getProperty("user.home"), licenceRequestFolderName, publicKeyFileName);
-        bos = new BufferedOutputStream(new FileOutputStream(appPublicKeyPath.toFile()));
-        bos.write(keyPair.getPublic().getEncoded());
+        String licenceRequestCertFileName = "licence_request_cert";
+        Path appCertificatePath = Paths.get(System.getProperty("user.home"), licenceRequestFolderName, licenceRequestCertFileName);
+        bos = new BufferedOutputStream(new FileOutputStream(appCertificatePath.toFile()));
+        bos.write(this.keyStore.getCertificate(keyPairAlias).getEncoded());
         bos.close();
-        System.out.println("Successfully stored this instance's public key!");
+        System.out.println("Successfully stored this instance's certificate!");
+
+        String signatureFileName = "licence_request_signature";
+        Path signaturePath = Paths.get(System.getProperty("user.home"), licenceRequestFolderName, signatureFileName);
+        bos = new BufferedOutputStream(new FileOutputStream(signaturePath.toFile()));
+        bos.write(signature);
+        bos.close();
+        System.out.println("Successfully stored the signature!");
 
         System.out.println("Licence Request can be found here:");
         System.out.println(Path.of(System.getProperty("user.home"), licenceRequestFolderName));
@@ -303,10 +342,10 @@ public class ExecutionController {
         keyGenerator.init(256);
         return keyGenerator.generateKey();
     }
-    private byte[] encrypt(String input, Key key, byte[] iv) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
+    private byte[] encrypt(byte[] input, Key key, byte[] iv) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
         Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
         cipher.init(Cipher.ENCRYPT_MODE, key, new IvParameterSpec(iv));
-        return cipher.doFinal(input.getBytes());
+        return cipher.doFinal(input);
     }
 
     private Certificate generateCertificate(KeyPair keyPair, String subjectName) throws CertificateException, OperatorCreationException {
