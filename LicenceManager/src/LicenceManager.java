@@ -35,7 +35,13 @@ public class LicenceManager {
     private final KeyStore keyStore;
     private static final String keyPairAlias = "rsa-encryption-key-pair";
     private final String keyStorePass;
+
     private static final String licencesFolderName = "licences";
+    private static final String licenceFolderNameDistApp = "Licence_Manager";
+    private static final String licenceDataFileName = "licence_info";
+    private static final String licenceKeyFileName = "licence_key";
+    private static final String licenceIVFileName = "licence_iv";
+
     private static final String licenceRequestKeyFileName = "licence_request_key";
     private static final String licenceRequestIVFileName = "licence_request_iv";
     private static final String licenceRequestDataFileName = "licence_request_data";
@@ -162,29 +168,44 @@ public class LicenceManager {
         return new DecryptResult(licenceInfo, appPublicKey);
     }
     public void generateLicence(String licenceInfo, PublicKey appPublicKey) throws NoSuchAlgorithmException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException, IOException {
-        //encryption
+        //Encrypt Licence Info
         SecretKey key = generateKey();
         byte[] iv = generateIV();
         byte[] encryptedData = encrypt(licenceInfo, key, iv);
 
-        String licenceFolderName = generateLicenceFolderName();
+        String uniqueLicenceFolderName = generateLicenceFolderName();
 
-        //save to file
-        String fileName = "licence_info";
-        Path filePath = Paths.get(System.getProperty("user.dir"), licencesFolderName, licenceFolderName, fileName);
-        saveToFile(encryptedData, filePath, false);
+        //Save Licence Destined to distributed app:
+        Path appLicenceFile = Paths.get(System.getProperty("user.home"), licenceFolderNameDistApp , uniqueLicenceFolderName, licenceDataFileName);
+        Files.createDirectories(appLicenceFile.getParent());
+        saveToFile(encryptedData, appLicenceFile);
 
-        Cipher rsaCipher = Cipher.getInstance("RSA");
-        rsaCipher.init(Cipher.ENCRYPT_MODE, appPublicKey);
+        //Save Licence 'Copy' for LicenceManager
+        Path lmLicenceFilePath = Paths.get(System.getProperty("user.dir"), licencesFolderName, uniqueLicenceFolderName, licenceDataFileName);
+        Files.createDirectories(lmLicenceFilePath.getParent());
+        saveToFile(encryptedData, lmLicenceFilePath);
 
-        byte[] encryptedKey = rsaCipher.doFinal(key.getEncoded());
-        byte[] encryptedIV = rsaCipher.doFinal(iv);
+        //Encrypt & Save Encrypted Key & IV to distributed app:
+        Cipher appRSACipher = Cipher.getInstance("RSA");
+        appRSACipher.init(Cipher.ENCRYPT_MODE, appPublicKey);
+        byte[] appEncryptedKey = appRSACipher.doFinal(key.getEncoded());
+        byte[] appEncryptedIV = appRSACipher.doFinal(iv);
 
-        Path encryptedKeyFile = Paths.get(System.getProperty("user.dir"), licencesFolderName, licenceFolderName, "licence_key");
-        Path encryptedIVFile = Paths.get(System.getProperty("user.dir"), licencesFolderName, licenceFolderName, "licence_iv");
+        Path appLicenceKeyFile = Paths.get(System.getProperty("user.home"), licenceFolderNameDistApp, uniqueLicenceFolderName, licenceKeyFileName);
+        saveToFile(appEncryptedKey, appLicenceKeyFile);
+        Path appLicenceIVFile = Paths.get(System.getProperty("user.home"), licenceFolderNameDistApp, uniqueLicenceFolderName, licenceIVFileName);
+        saveToFile(appEncryptedIV, appLicenceIVFile);
 
-        saveToFile(encryptedKey, encryptedKeyFile, false);
-        saveToFile(encryptedIV, encryptedIVFile, false);
+        //Encrypt Save Encrypted Key & IV for LicenceManager:
+        Cipher lmRSACipher = Cipher.getInstance("RSA");
+        lmRSACipher.init(Cipher.ENCRYPT_MODE, keyPair.getPublic());
+        byte[] lmEncryptedKey = lmRSACipher.doFinal(key.getEncoded());
+        byte[] lmEncryptedIV = lmRSACipher.doFinal(iv);
+
+        Path lmLicenceKeyFile = Paths.get(System.getProperty("user.dir"), licencesFolderName, uniqueLicenceFolderName, licenceKeyFileName);
+        saveToFile(lmEncryptedKey, lmLicenceKeyFile);
+        Path lmLicenceIVFile = Paths.get(System.getProperty("user.dir"), licencesFolderName, uniqueLicenceFolderName, licenceIVFileName);
+        saveToFile(lmEncryptedIV, lmLicenceIVFile);
     }
     public void generateKeyPair() throws NoSuchAlgorithmException, IOException, CertificateException, OperatorCreationException, KeyStoreException {
         KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
@@ -200,7 +221,7 @@ public class LicenceManager {
         fos.close();
 
     }
-    public void showLicenceRequestInfo(JSONObject jsonObject) {
+    public void showLicenceReqInfo(JSONObject jsonObject) {
         System.out.println("===================");
         System.out.println("LICENCE REQUEST");
 
@@ -230,6 +251,49 @@ public class LicenceManager {
         System.out.println("===================");
     }
 
+    public void showLicenceInfo(JSONObject jsonObject) {
+        System.out.println("Name - " + jsonObject.get("userName"));
+        System.out.println("NIC - " + jsonObject.get("userNIC"));
+        System.out.println("Email - " + jsonObject.get("userEmail"));
+        System.out.println("CPU Arch - " + jsonObject.get("cpuArchitecture"));
+        System.out.println("CPU Id - " + jsonObject.get("cpuIdentifier"));
+        System.out.println("CPU Number - " + jsonObject.get("cpuNumber"));
+        System.out.println("MAC Addr - " + jsonObject.get("macAddress"));
+        System.out.println("Name - " + jsonObject.get("appName"));
+        System.out.println("Version - " + jsonObject.get("appVersion"));
+    }
+
+    public String decryptLicence(Path licenceFolder) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, IOException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException {
+        Path licenceFile = licenceFolder.resolve("licence_info");
+        Path keyFile = licenceFolder.resolve("licence_key");
+        Path ivFile = licenceFolder.resolve("licence_iv");
+
+        if (!Files.exists(licenceFile) || !Files.exists(keyFile) || !Files.exists(ivFile)) {
+            System.out.println("Missing files for licence on: " + licenceFolder);
+            return null;
+        }
+
+        Cipher rsaDecipher = Cipher.getInstance("RSA");
+        rsaDecipher.init(Cipher.DECRYPT_MODE, keyPair.getPrivate());
+
+        byte[] licenceKeyBytes = rsaDecipher.doFinal(Files.readAllBytes(keyFile));
+        byte[] licenceIVBytes = rsaDecipher.doFinal(Files.readAllBytes(ivFile));
+
+        SecretKeySpec key = new SecretKeySpec(licenceKeyBytes, "AES");
+        IvParameterSpec iv = new IvParameterSpec(licenceIVBytes);
+
+        Cipher aesDecipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+        aesDecipher.init(Cipher.DECRYPT_MODE, key, iv);
+
+        byte[] licenceInfo = aesDecipher.doFinal(Files.readAllBytes(licenceFile));
+
+        return new String(licenceInfo);
+    }
+
+    public Path getLicencesDirectory() {
+        return Paths.get(System.getProperty("user.dir"), licencesFolderName);
+    }
+
     private byte[] generateIV() throws NoSuchAlgorithmException {
         SecureRandom random = SecureRandom.getInstanceStrong();
         byte[] iv = new byte[16];
@@ -247,9 +311,9 @@ public class LicenceManager {
         return cipher.doFinal(input.getBytes());
     }
 
-    private void saveToFile(byte[] data, Path path, boolean append) throws IOException {
+    private void saveToFile(byte[] data, Path path) throws IOException {
         Files.createDirectories(path.getParent());
-        FileOutputStream fos = new FileOutputStream(path.toFile(), append);
+        FileOutputStream fos = new FileOutputStream(path.toFile(), false);
         fos.write(data);
         fos.close();
     }

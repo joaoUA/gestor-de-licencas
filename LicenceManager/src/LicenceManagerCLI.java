@@ -2,19 +2,16 @@ import org.bouncycastle.operator.OperatorCreationException;
 import org.json.JSONObject;
 
 import javax.crypto.BadPaddingException;
-import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
-import javax.crypto.spec.IvParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.*;
 import java.security.cert.CertificateException;
 import java.security.spec.InvalidKeySpecException;
-import java.security.spec.X509EncodedKeySpec;
 import java.util.Scanner;
 
 public class LicenceManagerCLI {
@@ -52,7 +49,7 @@ public class LicenceManagerCLI {
                     LicenceManager.DecryptResult decryptResult = lm.decryptLicenceRequest(licenceRequestPath);
 
                     JSONObject jsonObject = new JSONObject(decryptResult.licenceInfo());
-                    lm.showLicenceRequestInfo(jsonObject);
+                    lm.showLicenceReqInfo(jsonObject);
 
                     boolean generate = false;
                     boolean generateInputValid = false;
@@ -78,6 +75,25 @@ public class LicenceManagerCLI {
                     lm.generateKeyPair();
                     break;
                 case 3: //listar licenças
+                    Path parentDirectory = lm.getLicencesDirectory();
+
+                    DirectoryStream<Path> stream = Files.newDirectoryStream(parentDirectory);
+
+                    System.out.println("Dirs inside:");
+                    for (Path path : stream) {
+                        if (Files.isDirectory(path)) {
+                            String licenceInfo = lm.decryptLicence(path);
+                            if (licenceInfo == null) {
+                                continue;
+                            }
+                            System.out.println("Licence: " + path);
+                            lm.showLicenceInfo(new JSONObject(licenceInfo));
+                            System.out.println("--- ---");
+                        }
+                    }
+
+
+                    stream.close();
                     break;
             }
         }

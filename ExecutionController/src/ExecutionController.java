@@ -160,7 +160,7 @@ public class ExecutionController {
         } while (licenceFolderPathInput.isEmpty());
 
         Path licenceFolderPath = Path.of(licenceFolderPathInput);
-        Path licencePath = Paths.get(String.valueOf(licenceFolderPath), "licence");
+        Path licencePath = Paths.get(String.valueOf(licenceFolderPath), "licence_info");
         Path licenceKeyPath = Paths.get(String.valueOf(licenceFolderPath), "licence_key");
         Path licenceIVPath = Paths.get(String.valueOf(licenceFolderPath), "licence_iv");
 
