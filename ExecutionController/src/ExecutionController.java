@@ -18,6 +18,8 @@ import java.io.IOException;
 import java.math.BigInteger;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
+import java.net.SocketException;
+import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -26,6 +28,7 @@ import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
+import java.time.ZonedDateTime;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.Scanner;
@@ -47,6 +50,7 @@ public class ExecutionController {
     private String appVersion;
     private String ccFullName;
     private String ccNIC;
+    private String email;
 
     public ExecutionController(String appName, String version) throws IOException, KeyStoreException, CertificateException, NoSuchAlgorithmException, PTEID_Exception, OperatorCreationException, UnrecoverableEntryException {
         System.loadLibrary("pteidlibj");
@@ -95,6 +99,11 @@ public class ExecutionController {
             this.keyStore.store(fos, this.keyStorePassword.toCharArray());
             fos.close();
         }
+
+        do {
+            System.out.println("Email: ");
+            this.email = scanner.nextLine().trim();
+        } while (this.email.isEmpty());
 
         do {
             System.out.println("Key Store Password: ");
@@ -151,45 +160,44 @@ public class ExecutionController {
         byte[] decryptedLicence = aesDecipher.doFinal(encryptedLicence);
 
         licenceJSON = new JSONObject(new String(decryptedLicence));
+
+        //Check for validity
+        ZonedDateTime startDate = ZonedDateTime.parse((String) licenceJSON.get("startDate"));
+        ZonedDateTime endDate = ZonedDateTime.parse((String) licenceJSON.get("endDate"));
+
+        ZonedDateTime now = ZonedDateTime.now();
+
+        if (now.isBefore(startDate)) {
+            System.out.println("Licence start date is after today. Licence is not in effect yet");
+            return false;
+        }
+        if (now.isAfter(endDate)) {
+            System.out.println("Licence expired.");
+            return false;
+        }
+
+        JSONObject currentData = getDataForLicenceRequest();
+
+        for (var key : currentData.keySet()) {
+            if (!licenceJSON.keySet().contains(key)) {
+                System.out.println("Licence is missing: " + key);
+                return false;
+            }
+            String licenceValue = (String) licenceJSON.get(key);
+            String currentValue = (String) currentData.get(key);
+
+            if (!licenceValue.equals(currentValue)) {
+                System.out.println(licenceValue + " is not correct with: " + currentValue);
+                return false;
+            }
+        }
+
         return true;
     }
 
     public boolean startRegistration() throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException {
-        Scanner scanner = new Scanner(System.in);
-
-        String userName;
-        String userEmail;
-        String userNIC;
-        String cpus;
-        String cpuArch;
-        String cpuId;
-        String macAddresses;
-        String appName;
-        String appVersion;
-
         System.out.println("Starting registration process!");
-
-        appName = this.appName;
-        appVersion = this.appVersion;
-        userName = this.ccFullName;
-        userNIC = this.ccNIC;
-        do {
-            System.out.println("Input your email:");
-            userEmail = scanner.nextLine().trim();
-        } while (userEmail.isEmpty());
-
-        cpus = System.getenv("NUMBER_OF_PROCESSORS");
-        cpuArch = System.getenv("PROCESSOR_ARCHITECTURE");
-        cpuId = System.getenv("PROCESSOR_IDENTIFIER");
-
-        InetAddress ip = InetAddress.getLocalHost();
-        NetworkInterface network = NetworkInterface.getByInetAddress(ip);
-        byte[] mac = network.getHardwareAddress();
-        StringBuilder sb = new StringBuilder();
-        for (byte b : mac) {
-            sb.append(String.format("%02X", b));
-        }
-        macAddresses = sb.toString();
+        JSONObject jsonData = getDataForLicenceRequest();
 
         //Check for author's public key
         Path authorKeyPath = Paths.get(System.getProperty("user.dir"), "author_keys", "author_public_key");
@@ -205,18 +213,7 @@ public class ExecutionController {
         byte[] iv = generateIV();
         SecretKey key = generateKey();
 
-        JSONObject jsonObject = new JSONObject();
-        jsonObject.put("userName", userName);
-        jsonObject.put("userEmail", userEmail);
-        jsonObject.put("userNIC", userNIC);
-        jsonObject.put("cpuNumber", cpus);
-        jsonObject.put("cpuArchitecture", cpuArch);
-        jsonObject.put("cpuIdentifier", cpuId);
-        jsonObject.put("macAddress", macAddresses);
-        jsonObject.put("appName", appName);
-        jsonObject.put("appVersion", appVersion);
-
-        byte[] encryptedData = encrypt(jsonObject.toString(), key, iv);
+        byte[] encryptedData = encrypt(jsonData.toString(), key, iv);
 
         //todo allow user to input destination path of licence request folder
 
@@ -260,7 +257,7 @@ public class ExecutionController {
         System.out.println(Path.of(System.getProperty("user.home"), licenceRequestFolderName));
 
         System.out.println("Licence Request: ");
-        showLicenceRequestInfo(jsonObject);
+        showLicenceRequestInfo(jsonData);
 
         return true;
     }
@@ -341,5 +338,29 @@ public class ExecutionController {
                 keyPair.getPublic());
 
         return new JcaX509CertificateConverter().setProvider(bcProvider).getCertificate(certificateBuilder.build(contentSigner));
+    }
+
+    private JSONObject getDataForLicenceRequest() throws UnknownHostException, SocketException {
+        JSONObject data = new JSONObject();
+
+        data.put("appName", this.appName);
+        data.put("appVersion", this.appVersion);
+        data.put("userName", this.ccFullName);
+        data.put("userNIC", this.ccNIC);
+        data.put("userEmail", this.email);
+        data.put("cpuArchitecture", System.getenv("PROCESSOR_ARCHITECTURE"));
+        data.put("cpuIdentifier", System.getenv("PROCESSOR_IDENTIFIER"));
+        data.put("cpuNumber", System.getenv("NUMBER_OF_PROCESSORS"));
+
+        InetAddress ip = InetAddress.getLocalHost();
+        NetworkInterface network = NetworkInterface.getByInetAddress(ip);
+        byte[] mac = network.getHardwareAddress();
+        StringBuilder sb = new StringBuilder();
+        for (byte b : mac) {
+            sb.append(String.format("%02X", b));
+        }
+        data.put("macAddress", sb.toString());
+
+        return data;
     }
 }
