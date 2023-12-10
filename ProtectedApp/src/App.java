@@ -1,4 +1,5 @@
 import org.bouncycastle.operator.OperatorCreationException;
+import pt.gov.cartaodecidadao.PTEID_Exception;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
@@ -10,7 +11,7 @@ import java.security.cert.CertificateException;
 import java.security.spec.InvalidKeySpecException;
 
 public class App {
-    public static void main(String[] args) throws InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, InvalidKeyException, IOException, InvalidKeySpecException, UnrecoverableEntryException, CertificateException, KeyStoreException, OperatorCreationException, URISyntaxException {
+    public static void main(String[] args) throws InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, InvalidKeyException, IOException, InvalidKeySpecException, UnrecoverableEntryException, CertificateException, KeyStoreException, OperatorCreationException, URISyntaxException, PTEID_Exception {
         ExecutionController ec = new ExecutionController("app", "1.0");
 
         if (!ec.isRegistered()) {

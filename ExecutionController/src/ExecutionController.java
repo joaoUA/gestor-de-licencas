@@ -5,7 +5,8 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
-import org.json.simple.JSONObject;
+import org.json.JSONObject;
+import pt.gov.cartaodecidadao.*;
 
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
@@ -15,7 +16,8 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.math.BigInteger;
-import java.net.*;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,7 +27,10 @@ import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
-import java.util.*;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.Enumeration;
+import java.util.Scanner;
 
 public class ExecutionController {
     private static final String keyStoreFileName = "myKeyStore.jks";
@@ -35,33 +40,49 @@ public class ExecutionController {
     private String keyStorePassword;
     private KeyPair keyPair;
 
-    private final String appName;
-    private final String version;
+    //LicenceData
+    private String appName;
+    private String appVersion;
+    private String ccFullName;
+    private String ccNIC;
 
-    public ExecutionController(String appName, String version) throws IOException, KeyStoreException, CertificateException, NoSuchAlgorithmException {
+    public ExecutionController(String appName, String version) throws IOException, KeyStoreException, CertificateException, NoSuchAlgorithmException, PTEID_Exception {
+
         this.appName = appName;
-        this.version = version;
+        this.appVersion = version;
 
-        Provider p = Security.getProvider("SunPKCS11");
+        System.loadLibrary("pteidlibj");
+
+        //Get Provider
+        Provider oldProvider = Security.getProvider("SunPKCS11");
+        //todo better way to get the file path from ProtectedApp
         Path configPath = Paths.get("..", "ExecutionController", "src", "pkcs11cc.cfg");
-
-        Provider newProvider = p.configure(configPath.toAbsolutePath().toString());
-
-        System.out.println(newProvider.getName());
-        System.out.println(newProvider.getInfo());
-
-        Provider[] providers = Security.getProviders();
-        for (int i = 0; i < providers.length; i++) {
-            System.out.println(i + "-Nome: "+providers[i].getName());
+        Provider provider = oldProvider.configure(configPath.toAbsolutePath().toString());
+        KeyStore ccKS = KeyStore.getInstance("PKCS11", provider);
+        ccKS.load(null, null);
+        Enumeration<String> als = ccKS.aliases();
+        while (als.hasMoreElements()) {
+            System.out.printf("%s\n", als.nextElement());
         }
 
-        KeyStore ks = KeyStore.getInstance("PKCS11", newProvider);
-        ks.load(null, null);
-
-        Enumeration<String> als = ks.aliases();
-        while (als.hasMoreElements()){
-            System.out.println( als.nextElement() );
+        //Check Card is connected (assume user only connects max 1)
+        //todo adicionar leitura de eventos de inserção/remoção de cartões
+        PTEID_ReaderSet readerSet = PTEID_ReaderSet.instance();
+        if (readerSet.readerCount() == 0) {
+            System.out.println("No readers!");
+            return;
         }
+
+        PTEID_ReaderContext context = readerSet.getReaderByNum(0);
+        if (!context.isCardPresent()) {
+            System.out.println("CC not present!");
+            return;
+        }
+
+        PTEID_EIDCard card = context.getEIDCard();
+        PTEID_EId eid = card.getID();
+        this.ccFullName = eid.getGivenName() + eid.getSurname();
+        this.ccNIC = eid.getCivilianIdNumber();
     }
 
     public boolean isRegistered() throws KeyStoreException, CertificateException, IOException,
@@ -89,6 +110,11 @@ public class ExecutionController {
             fos.close();
 
             System.out.println("New KeyStore successfully created!");
+
+            //create new key pair right here
+            System.out.println("Creating new KeyPair...");
+            generateKeyPair(keyStorePath);
+            System.out.println("New KeyPair created and stored in the KeyStore, alias: " + keyPairAlias);
             return false;
         }
 
@@ -109,20 +135,7 @@ public class ExecutionController {
         if (!keyStore.containsAlias(keyPairAlias)) {
             System.out.println("Couldn't find KeyPair in KeyStore: " + keyPairAlias);
             System.out.println("Creating new KeyPair...");
-
-            KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
-            keyPairGenerator.initialize(2048);
-            keyPair = keyPairGenerator.generateKeyPair();
-
-            Certificate certificate = generateCertificate(keyPair, "CN=Self-Signed");
-            keyStore.setKeyEntry(keyPairAlias,
-                    keyPair.getPrivate(),
-                    keyStorePassword.toCharArray(),
-                    new Certificate[]{certificate});
-
-            FileOutputStream fos = new FileOutputStream(keyStorePath.toFile());
-            keyStore.store(fos, keyStorePassword.toCharArray());
-            fos.close();
+            generateKeyPair(keyStorePath);
             System.out.println("New KeyPair created and stored in the KeyStore, alias: " + keyPairAlias);
 
             return false;
@@ -173,7 +186,7 @@ public class ExecutionController {
         System.out.printf("Licence info:\n %s", new String(decryptedLicence, StandardCharsets.UTF_8));
         return true;
     }
-    
+
     public boolean startRegistration() throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException {
         Scanner scanner = new Scanner(System.in);
 
@@ -190,17 +203,13 @@ public class ExecutionController {
         System.out.println("Starting registration process!");
 
         appName = this.appName;
-        appVersion = this.version;
-        userName = System.getProperty("user.name");
+        appVersion = this.appVersion;
+        userName = this.ccFullName;
+        userNIC = this.ccNIC;
         do {
             System.out.println("Input your email:");
             userEmail = scanner.nextLine().trim();
         } while (userEmail.isEmpty());
-
-        do {
-            System.out.println("Input your Civil ID Number:");
-            userNIC = scanner.nextLine().trim();
-        } while (userNIC.isEmpty());
 
         cpus = System.getenv("NUMBER_OF_PROCESSORS");
         cpuArch = System.getenv("PROCESSOR_ARCHITECTURE");
@@ -229,23 +238,21 @@ public class ExecutionController {
         byte[] iv = generateIV();
         SecretKey key = generateKey();
 
-        HashMap<String, String> map = new HashMap<>();
-        map.put("userName", userName);
-        map.put("userEmail", userEmail);
-        map.put("userNIC", userNIC);
-        map.put("cpuNumber", cpus);
-        map.put("cpuArchitecture", cpuArch);
-        map.put("cpuIdentifier", cpuId);
-        map.put("macAddress", macAddresses);
-        map.put("appName", appName);
-        map.put("appVersion", appVersion);
-
-        JSONObject jsonObject = new JSONObject(map);
+        JSONObject jsonObject = new JSONObject();
+        jsonObject.put("userName", userName);
+        jsonObject.put("userEmail", userEmail);
+        jsonObject.put("userNIC", userNIC);
+        jsonObject.put("cpuNumber", cpus);
+        jsonObject.put("cpuArchitecture", cpuArch);
+        jsonObject.put("cpuIdentifier", cpuId);
+        jsonObject.put("macAddress", macAddresses);
+        jsonObject.put("appName", appName);
+        jsonObject.put("appVersion", appVersion);
 
         System.out.println("This will be the information in the licence request:");
         System.out.println(jsonObject);
 
-        byte[] encryptedData = encrypt(jsonObject.toJSONString(), key, iv);
+        byte[] encryptedData = encrypt(jsonObject.toString(), key, iv);
 
         //todo allow user to input destination path of licence request folder
 
@@ -285,11 +292,30 @@ public class ExecutionController {
         bos.close();
         System.out.println("Successfully stored this instance's public key!");
 
+        System.out.println("Licence Request can be found here:");
+        System.out.println(Paths.get(System.getProperty("user.home"), licenceRequestFolderName));
+
         return true;
     }
 
     public void showLicenceInfo() {
 
+    }
+
+    private void generateKeyPair(Path keyStorePath) throws NoSuchAlgorithmException, CertificateException, OperatorCreationException, KeyStoreException, IOException {
+        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+        keyPairGenerator.initialize(2048);
+        keyPair = keyPairGenerator.generateKeyPair();
+
+        Certificate certificate = generateCertificate(keyPair, "CN=Self-Signed");
+        keyStore.setKeyEntry(keyPairAlias,
+                keyPair.getPrivate(),
+                keyStorePassword.toCharArray(),
+                new Certificate[]{certificate});
+
+        FileOutputStream fos = new FileOutputStream(keyStorePath.toFile());
+        keyStore.store(fos, keyStorePassword.toCharArray());
+        fos.close();
     }
 
     private byte[] generateIV() throws NoSuchAlgorithmException {

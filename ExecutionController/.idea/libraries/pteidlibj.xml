@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="pteidlibj">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/../../../../../Program Files/Portugal Identity Card/sdk/Java/pteidlibj.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

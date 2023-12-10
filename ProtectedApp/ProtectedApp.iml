@@ -9,5 +9,7 @@
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="library" exported="" name="ExecutionController" level="project" />
     <orderEntry type="library" name="bouncycastle.bcmail.jdk15on" level="project" />
+    <orderEntry type="library" exported="" name="pteidlibj" level="project" />
+    <orderEntry type="library" name="json" level="project" />
   </component>
 </module>
