@@ -22,7 +22,9 @@ import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Calendar;
 import java.util.Date;
@@ -168,6 +170,17 @@ public class LicenceManager {
         return new DecryptResult(licenceInfo, appPublicKey);
     }
     public void generateLicence(String licenceInfo, PublicKey appPublicKey) throws NoSuchAlgorithmException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException, IOException {
+
+        JSONObject licenceJSON = new JSONObject(licenceInfo);
+
+        ZonedDateTime startDate = ZonedDateTime.now();
+        ZonedDateTime endDate = startDate.plusMonths(6);
+
+        licenceJSON.put("startDate", startDate.toString());
+        licenceJSON.put("endDate", endDate.toString());
+
+        licenceInfo = licenceJSON.toString();
+
         //Encrypt Licence Info
         SecretKey key = generateKey();
         byte[] iv = generateIV();
@@ -252,15 +265,9 @@ public class LicenceManager {
     }
 
     public void showLicenceInfo(JSONObject jsonObject) {
-        System.out.println("Name - " + jsonObject.get("userName"));
-        System.out.println("NIC - " + jsonObject.get("userNIC"));
-        System.out.println("Email - " + jsonObject.get("userEmail"));
-        System.out.println("CPU Arch - " + jsonObject.get("cpuArchitecture"));
-        System.out.println("CPU Id - " + jsonObject.get("cpuIdentifier"));
-        System.out.println("CPU Number - " + jsonObject.get("cpuNumber"));
-        System.out.println("MAC Addr - " + jsonObject.get("macAddress"));
-        System.out.println("Name - " + jsonObject.get("appName"));
-        System.out.println("Version - " + jsonObject.get("appVersion"));
+        for (var key : jsonObject.keySet()) {
+            System.out.println(key + ": " + jsonObject.get(key));
+        }
     }
 
     public String decryptLicence(Path licenceFolder) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, IOException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException {
