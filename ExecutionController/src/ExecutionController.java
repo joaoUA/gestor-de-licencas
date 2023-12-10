@@ -28,7 +28,6 @@ import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Calendar;
 import java.util.Date;
-import java.util.Enumeration;
 import java.util.Scanner;
 
 public class ExecutionController {
@@ -49,12 +48,11 @@ public class ExecutionController {
     private String ccFullName;
     private String ccNIC;
 
-    public ExecutionController(String appName, String version) throws IOException, KeyStoreException, CertificateException, NoSuchAlgorithmException, PTEID_Exception {
+    public ExecutionController(String appName, String version) throws IOException, KeyStoreException, CertificateException, NoSuchAlgorithmException, PTEID_Exception, OperatorCreationException, UnrecoverableEntryException {
+        System.loadLibrary("pteidlibj");
 
         this.appName = appName;
         this.appVersion = version;
-
-        System.loadLibrary("pteidlibj");
 
         //Get Provider
         Provider oldProvider = Security.getProvider("SunPKCS11");
@@ -63,99 +61,65 @@ public class ExecutionController {
         Provider provider = oldProvider.configure(configPath.toAbsolutePath().toString());
         KeyStore ccKS = KeyStore.getInstance("PKCS11", provider);
         ccKS.load(null, null);
-        Enumeration<String> als = ccKS.aliases();
-        while (als.hasMoreElements()) {
-            System.out.printf("%s\n", als.nextElement());
-        }
 
-        //Check Card is connected (assume user only connects max 1)
+        //Get Data from CC (assume max 1 reader, 1 card)
         //todo adicionar leitura de eventos de inserção/remoção de cartões
         PTEID_ReaderSet readerSet = PTEID_ReaderSet.instance();
         if (readerSet.readerCount() == 0) {
             System.out.println("No readers!");
             return;
         }
-
         PTEID_ReaderContext context = readerSet.getReaderByNum(0);
         if (!context.isCardPresent()) {
             System.out.println("CC not present!");
             return;
         }
-
         PTEID_EIDCard card = context.getEIDCard();
         PTEID_EId eid = card.getID();
         this.ccFullName = eid.getGivenName() + " " + eid.getSurname();
         this.ccNIC = eid.getCivilianIdNumber();
-    }
 
-    public boolean isRegistered() throws KeyStoreException, CertificateException, IOException,
-            NoSuchAlgorithmException, UnrecoverableEntryException, NoSuchPaddingException, InvalidKeyException,
-            IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException,
-            OperatorCreationException {
+        //Load Key Store
         Scanner scanner = new Scanner(System.in);
-
-        System.out.println("Checking if KeyStore exists");
         Path keyStorePath = Paths.get(System.getProperty("user.dir"), keyStoreFileName);
-
+        this.keyStore = KeyStore.getInstance(keyStoreType);
         if (!Files.exists(keyStorePath)) {
-            System.out.println("KeyStore file not found: " + keyStorePath);
-            System.out.println("Creating new KeyStore...");
-            keyStore = KeyStore.getInstance(keyStoreType);
-
+            System.out.println("No existing Key Store.");
             do {
-                System.out.println("Define the password for the new KeyStore:");
-                keyStorePassword = scanner.nextLine().trim();
-            } while (keyStorePassword.isEmpty());
+                System.out.println("Add password to new Key Store:");
+                this.keyStorePassword = scanner.nextLine().trim();
+            } while (this.keyStorePassword.isEmpty());
 
-            keyStore.load(null, keyStorePassword.toCharArray());
+            this.keyStore.load(null, this.keyStorePassword.toCharArray());
             FileOutputStream fos = new FileOutputStream(keyStorePath.toFile());
-            keyStore.store(fos, keyStorePassword.toCharArray());
+            this.keyStore.store(fos, this.keyStorePassword.toCharArray());
             fos.close();
-
-            System.out.println("New KeyStore successfully created!");
-
-            //create new key pair right here
-            System.out.println("Creating new KeyPair...");
-            generateKeyPair(keyStorePath);
-            System.out.println("New KeyPair created and stored in the KeyStore, alias: " + keyPairAlias);
-            return false;
         }
-
-        System.out.println("KeyStore file found: " + keyStorePath);
-        keyStore = KeyStore.getInstance(keyStoreType);
 
         do {
-            System.out.println("Introduce the KeyStore's password: ");
+            System.out.println("Key Store Password: ");
             keyStorePassword = scanner.nextLine().trim();
         } while (keyStorePassword.isEmpty());
-
-        //todo handle in case the password is incorrect, instead of throwing
+        //todo handle case where password is incorrect instead of throwing
         keyStore.load(new FileInputStream(keyStorePath.toFile()), keyStorePassword.toCharArray());
+        System.out.println("Key Store Loaded!");
 
-        System.out.println("KeyStore successfully loaded!");
-
-        //todo add custom KeyPairAlias depending on user/system/app
-        if (!keyStore.containsAlias(keyPairAlias)) {
-            System.out.println("Couldn't find KeyPair in KeyStore: " + keyPairAlias);
-            System.out.println("Creating new KeyPair...");
+        if (!this.keyStore.containsAlias(keyPairAlias)) {
+            System.out.println("Creating new Key Pair!");
             generateKeyPair(keyStorePath);
-            System.out.println("New KeyPair created and stored in the KeyStore, alias: " + keyPairAlias);
-
-            return false;
+            System.out.println("New Key Store created. Key Pair alias: " + keyPairAlias);
         }
 
-        System.out.println("KeyPair found in KeyStore with alias: " + keyPairAlias);
-
-        KeyStore.PrivateKeyEntry privateKeyEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry(keyPairAlias,
+        KeyStore.PrivateKeyEntry privateKeyEntry = (KeyStore.PrivateKeyEntry) this.keyStore.getEntry(keyPairAlias,
                 new KeyStore.PasswordProtection(keyStorePassword.toCharArray()));
-
         PrivateKey privateKey = privateKeyEntry.getPrivateKey();
         PublicKey publicKey = privateKeyEntry.getCertificate().getPublicKey();
-
-        keyPair = new KeyPair(publicKey, privateKey);
-
-        System.out.println("Successfully loaded KeyPair with alias: " + keyPairAlias);
-
+        this.keyPair = new KeyPair(publicKey, privateKey);
+    }
+    public boolean isRegistered() throws IOException,
+            NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException,
+            IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException {
+        Scanner scanner = new Scanner(System.in);
         String licenceFolderPathInput;
         do {
             System.out.println("Introduce the path for your licence folder:");
